@@ -254,7 +254,7 @@ const SkillsMarketplace = () => {
 
 				{/* Enhanced Skills Grid */}
 				<div className="skills-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-20">
-					{filteredCategories.map((skill, index) => (
+					{filteredCategories.map((skill) => (
 						<motion.div
 							key={skill.name}
 							className="skill-category"

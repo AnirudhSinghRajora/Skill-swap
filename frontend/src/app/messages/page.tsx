@@ -15,7 +15,7 @@ import {
 	Image as ImageIcon,
 	Paperclip
 } from 'lucide-react';
-import { dummyUsers, dummyMessages, getUserById, getMessagesByUserId } from '@/lib/dummy-data';
+import { dummyUsers, dummyMessages, getUserById } from '@/lib/dummy-data';
 
 export default function MessagesPage() {
 	const [selectedUser, setSelectedUser] = useState<string | null>('2'); // Michael Chen

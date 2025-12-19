@@ -19,9 +19,9 @@ const FeaturesSection = () => {
 
 	useEffect(() => {
 		const ctx = gsap.context(() => {
-			const cards = gsap.utils.toArray('.feature-card');
+			const cards = gsap.utils.toArray('.feature-card') as Element[];
 
-			cards.forEach((card: any, index) => {
+			cards.forEach((card, index) => {
 				gsap.fromTo(
 					card,
 					{ y: 80, opacity: 0, rotateY: 15 },
@@ -227,7 +227,7 @@ const FeaturesSection = () => {
 											{testimonial.skill}
 										</div>
 										<p className="text-stone-600 dark:text-stone-300 mb-6 italic leading-relaxed">
-											"{testimonial.text}"
+										&quot;{testimonial.text}&quot;
 										</p>
 										<div>
 											<div className="font-bold text-stone-900 dark:text-stone-100 text-lg">

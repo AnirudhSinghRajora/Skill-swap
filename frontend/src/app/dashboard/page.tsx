@@ -12,7 +12,7 @@ export default function DashboardPage() {
 	const currentUserId = '1'; // Sarah Johnson
 	const user = getUserById(currentUserId);
 	const swapRequests = getSwapRequestsByUserId(currentUserId);
-	const notifications = getNotificationsByUserId(currentUserId);
+	const notifications = getNotificationsByUserId();
 
 	if (!user) {
 		return (

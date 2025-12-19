@@ -305,7 +305,7 @@ export const getRatingsByUserId = (userId: string): RatingType[] => {
 	return dummyRatings.filter((rating) => rating.userId === userId);
 };
 
-export const getNotificationsByUserId = (userId: string): Notification[] => {
+export const getNotificationsByUserId = (): Notification[] => {
 	return dummyNotifications;
 };
 

@@ -8,8 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { User, Bell, Shield, Palette, Camera, Save, Eye, EyeOff } from 'lucide-react';
-import { getUserById, dummySkills } from '@/lib/dummy-data';
+import { Camera, Save, Eye, EyeOff } from 'lucide-react';
+import { getUserById } from '@/lib/dummy-data';
 
 export default function SettingsPage() {
 	const [activeTab, setActiveTab] = useState('profile');

@@ -279,7 +279,7 @@ const CallToActionSection = () => {
 												<div className="flex items-center justify-center gap-2 mb-6">
 													<Award className="h-5 w-5 text-amber-500" />
 													<span className="text-stone-600">
-														You've earned your first badge: Community
+														You&apos;ve earned your first badge: Community
 														Member
 													</span>
 												</div>

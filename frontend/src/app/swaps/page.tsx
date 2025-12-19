@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CheckCircle, XCircle, Clock, MessageSquare, ArrowRight, User } from 'lucide-react';
-import { getUserById, getSwapRequestsByUserId, dummySwapRequests } from '@/lib/dummy-data';
+import { getUserById, getSwapRequestsByUserId } from '@/lib/dummy-data';
+import { SwapRequest } from '@/types/swapRequest';
 
 export default function SwapsPage() {
 	const [activeTab, setActiveTab] = useState('incoming');
@@ -42,19 +43,6 @@ export default function SwapsPage() {
 		}
 	};
 
-	const getStatusColor = (status: string) => {
-		switch (status) {
-			case 'accepted':
-				return 'text-green-600';
-			case 'rejected':
-				return 'text-red-600';
-			case 'pending':
-				return 'text-yellow-600';
-			default:
-				return 'text-muted-foreground';
-		}
-	};
-
 	const handleAcceptRequest = (swapId: string) => {
 		console.log('Accepting swap request:', swapId);
 		// In a real app, this would update the swap request status
@@ -70,7 +58,7 @@ export default function SwapsPage() {
 		// In a real app, this would update the swap request status
 	};
 
-	const SwapRequestCard = ({ request, isIncoming }: { request: any; isIncoming: boolean }) => {
+	const SwapRequestCard = ({ request, isIncoming }: { request: SwapRequest; isIncoming: boolean }) => {
 		const otherUser = isIncoming
 			? getUserById(request.requesterId)
 			: getUserById(request.responderId);

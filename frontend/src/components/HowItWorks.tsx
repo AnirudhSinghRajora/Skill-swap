@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -15,7 +15,7 @@ const HowItWorksSection = () => {
 	const [activeStep, setActiveStep] = useState(0);
 	const [isPlaying, setIsPlaying] = useState(false);
 
-	const steps = [
+	const steps = useMemo(() => [
 		{
 			icon: UserPlus,
 			title: 'Create Your Profile',
@@ -52,7 +52,7 @@ const HowItWorksSection = () => {
 				'Set milestones, receive feedback, showcase achievements, and expand your network for future opportunities.',
 			color: 'from-violet-500 to-purple-500'
 		}
-	];
+	], []);
 
 	useEffect(() => {
 		const ctx = gsap.context(() => {
@@ -98,7 +98,7 @@ const HowItWorksSection = () => {
 		}, sectionRef);
 
 		return () => ctx.revert();
-	}, []);
+	}, [steps]);
 
 	const handlePlayDemo = () => {
 		setIsPlaying(true);
@@ -266,7 +266,7 @@ const HowItWorksSection = () => {
 						</p>
 						<div className="flex flex-col sm:flex-row gap-4 justify-center">
 							<Button className="bg-gradient-to-r from-sage-600 to-terracotta-600 hover:from-sage-700 hover:to-terracotta-700 text-black hover:text-white px-10 py-4 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300">
-								Join Now - It's Free
+								Join Now - It&apos;s Free
 							</Button>
 							<Button
 								variant="outline"
