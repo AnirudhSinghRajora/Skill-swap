@@ -1,6 +1,9 @@
 package service
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"time"
 	"unicode"
@@ -12,6 +15,11 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	oauth2api "google.golang.org/api/oauth2/v2"
+	"google.golang.org/api/option"
+	"gorm.io/gorm"
 )
 
 type AuthService interface {
@@ -19,18 +27,59 @@ type AuthService interface {
 	Login(req *LoginRequest) (*AuthResponse, error)
 	RefreshToken(refreshToken string) (*AuthResponse, error)
 	ValidateToken(tokenString string) (*TokenClaims, error)
+	GetGoogleAuthURL(state string) string
+	GoogleCallback(code string) (*AuthResponse, error)
+	ForgotPassword(email string) (string, error)
+	ResetPassword(token, newPassword string) error
+	SendVerificationEmail(userID uuid.UUID) (string, error)
+	VerifyEmail(token string) error
 }
 
 type authService struct {
-	userRepo repository.UserRepository
-	cfg      config.Config
+	userRepo    repository.UserRepository
+	cfg         config.Config
+	db          *gorm.DB
+	oauthConfig *oauth2.Config
 }
 
 func NewAuthService(userRepo repository.UserRepository, cfg config.Config) AuthService {
-	return &authService{
+	svc := &authService{
 		userRepo: userRepo,
 		cfg:      cfg,
 	}
+
+	if cfg.GoogleClientID != "" && cfg.GoogleClientSecret != "" {
+		svc.oauthConfig = &oauth2.Config{
+			ClientID:     cfg.GoogleClientID,
+			ClientSecret: cfg.GoogleClientSecret,
+			RedirectURL:  cfg.GoogleRedirectURL,
+			Scopes:       []string{"openid", "email", "profile"},
+			Endpoint:     google.Endpoint,
+		}
+	}
+
+	return svc
+}
+
+// NewAuthServiceWithDB creates an auth service with direct DB access (for token tables)
+func NewAuthServiceWithDB(userRepo repository.UserRepository, cfg config.Config, db *gorm.DB) AuthService {
+	svc := &authService{
+		userRepo: userRepo,
+		cfg:      cfg,
+		db:       db,
+	}
+
+	if cfg.GoogleClientID != "" && cfg.GoogleClientSecret != "" {
+		svc.oauthConfig = &oauth2.Config{
+			ClientID:     cfg.GoogleClientID,
+			ClientSecret: cfg.GoogleClientSecret,
+			RedirectURL:  cfg.GoogleRedirectURL,
+			Scopes:       []string{"openid", "email", "profile"},
+			Endpoint:     google.Endpoint,
+		}
+	}
+
+	return svc
 }
 
 // DTOs for authentication
@@ -118,6 +167,11 @@ func (s *authService) Login(req *LoginRequest) (*AuthResponse, error) {
 	user, err := s.userRepo.GetByEmail(req.Email)
 	if err != nil {
 		return nil, fmt.Errorf("invalid email or password: %w", apperrors.ErrInvalidCredentials)
+	}
+
+	// OAuth users can't login with password
+	if user.PasswordHash == "" {
+		return nil, fmt.Errorf("please use %s to sign in: %w", user.AuthProvider, apperrors.ErrInvalidCredentials)
 	}
 
 	// Verify password
@@ -229,6 +283,203 @@ func (s *authService) generateAuthResponse(user *models.User) (*AuthResponse, er
 			HasKeyBackup: user.EncryptedKeyBackup != nil && *user.EncryptedKeyBackup != "",
 		},
 	}, nil
+}
+
+// GetGoogleAuthURL returns the Google OAuth consent URL
+func (s *authService) GetGoogleAuthURL(state string) string {
+	if s.oauthConfig == nil {
+		return ""
+	}
+	return s.oauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
+}
+
+// GoogleCallback exchanges the auth code for tokens and creates/logs in a user
+func (s *authService) GoogleCallback(code string) (*AuthResponse, error) {
+	if s.oauthConfig == nil {
+		return nil, fmt.Errorf("google oauth not configured: %w", apperrors.ErrValidation)
+	}
+
+	ctx := context.Background()
+
+	// Exchange code for token
+	token, err := s.oauthConfig.Exchange(ctx, code)
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", apperrors.ErrInvalidCredentials)
+	}
+
+	// Get user info from Google
+	oauth2Service, err := oauth2api.NewService(ctx, option.WithTokenSource(s.oauthConfig.TokenSource(ctx, token)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create oauth2 service: %w", err)
+	}
+
+	googleUser, err := oauth2Service.Userinfo.Get().Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+
+	if googleUser.Email == "" {
+		return nil, fmt.Errorf("no email returned from Google: %w", apperrors.ErrValidation)
+	}
+
+	// Find or create user
+	user, err := s.userRepo.GetByEmail(googleUser.Email)
+	if err != nil {
+		// User doesn't exist — create new account
+		user = &models.User{
+			Name:          googleUser.Name,
+			Email:         googleUser.Email,
+			AuthProvider:  "google",
+			GoogleID:      &googleUser.Id,
+			EmailVerified: true,
+			IsPublic:      true,
+		}
+		if err := s.userRepo.Create(user); err != nil {
+			return nil, fmt.Errorf("failed to create user: %w", err)
+		}
+	} else {
+		// User exists — link Google account if not already linked
+		if user.GoogleID == nil || *user.GoogleID == "" {
+			user.GoogleID = &googleUser.Id
+			user.AuthProvider = "google"
+			user.EmailVerified = true
+			if err := s.userRepo.Update(user); err != nil {
+				return nil, fmt.Errorf("failed to link google account: %w", err)
+			}
+		}
+	}
+
+	return s.generateAuthResponse(user)
+}
+
+// ForgotPassword creates a password reset token and returns it
+func (s *authService) ForgotPassword(email string) (string, error) {
+	if s.db == nil {
+		return "", fmt.Errorf("database not configured: %w", apperrors.ErrValidation)
+	}
+
+	user, err := s.userRepo.GetByEmail(email)
+	if err != nil {
+		// Don't reveal if the user exists — return success silently
+		return "", nil
+	}
+
+	// Generate secure random token
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", fmt.Errorf("failed to generate token: %w", err)
+	}
+	tokenStr := hex.EncodeToString(tokenBytes)
+
+	resetToken := &models.PasswordResetToken{
+		UserID:    user.UserID,
+		Token:     tokenStr,
+		ExpiresAt: time.Now().Add(1 * time.Hour),
+	}
+
+	if err := s.db.Create(resetToken).Error; err != nil {
+		return "", fmt.Errorf("failed to save reset token: %w", err)
+	}
+
+	return tokenStr, nil
+}
+
+// ResetPassword validates a reset token and sets a new password
+func (s *authService) ResetPassword(token, newPassword string) error {
+	if s.db == nil {
+		return fmt.Errorf("database not configured: %w", apperrors.ErrValidation)
+	}
+
+	if err := validatePassword(newPassword); err != nil {
+		return err
+	}
+
+	var resetToken models.PasswordResetToken
+	if err := s.db.Where("token = ? AND used = false AND expires_at > ?", token, time.Now()).First(&resetToken).Error; err != nil {
+		return fmt.Errorf("invalid or expired reset token: %w", apperrors.ErrInvalidToken)
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	user, err := s.userRepo.GetByID(resetToken.UserID)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", apperrors.ErrNotFound)
+	}
+
+	user.PasswordHash = string(hashedPassword)
+	if err := s.userRepo.Update(user); err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	// Mark token as used
+	resetToken.Used = true
+	s.db.Save(&resetToken)
+
+	return nil
+}
+
+// SendVerificationEmail creates a verification token and returns it
+func (s *authService) SendVerificationEmail(userID uuid.UUID) (string, error) {
+	if s.db == nil {
+		return "", fmt.Errorf("database not configured: %w", apperrors.ErrValidation)
+	}
+
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return "", fmt.Errorf("user not found: %w", apperrors.ErrNotFound)
+	}
+
+	if user.EmailVerified {
+		return "", fmt.Errorf("email already verified: %w", apperrors.ErrValidation)
+	}
+
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", fmt.Errorf("failed to generate token: %w", err)
+	}
+	tokenStr := hex.EncodeToString(tokenBytes)
+
+	verifyToken := &models.EmailVerificationToken{
+		UserID:    user.UserID,
+		Token:     tokenStr,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	}
+
+	if err := s.db.Create(verifyToken).Error; err != nil {
+		return "", fmt.Errorf("failed to save verification token: %w", err)
+	}
+
+	return tokenStr, nil
+}
+
+// VerifyEmail validates a verification token and marks the email as verified
+func (s *authService) VerifyEmail(token string) error {
+	if s.db == nil {
+		return fmt.Errorf("database not configured: %w", apperrors.ErrValidation)
+	}
+
+	var verifyToken models.EmailVerificationToken
+	if err := s.db.Where("token = ? AND expires_at > ?", token, time.Now()).First(&verifyToken).Error; err != nil {
+		return fmt.Errorf("invalid or expired verification token: %w", apperrors.ErrInvalidToken)
+	}
+
+	user, err := s.userRepo.GetByID(verifyToken.UserID)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", apperrors.ErrNotFound)
+	}
+
+	user.EmailVerified = true
+	if err := s.userRepo.Update(user); err != nil {
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+
+	// Delete the used token
+	s.db.Delete(&verifyToken)
+
+	return nil
 }
 
 // validatePassword checks password meets minimum strength requirements

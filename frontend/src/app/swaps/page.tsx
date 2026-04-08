@@ -523,10 +523,10 @@ function SwapsContent() {
 		<div className="min-h-screen bg-background">
 			<div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Header */}
-				<div className="flex items-center justify-between mb-8">
+				<div className="flex items-center justify-between mb-10 animate-fade-in-up">
 					<div>
-						<h1 className="text-3xl font-bold text-foreground mb-2">Swap Requests</h1>
-						<p className="text-muted-foreground">Manage your skill exchange requests</p>
+						<h1 className="text-display-md text-foreground mb-2">Swap Requests</h1>
+						<p className="text-muted-foreground text-lg">Manage your skill exchange requests</p>
 					</div>
 					<Link href="/browse">
 						<Button>
@@ -661,57 +661,30 @@ function SwapsContent() {
 				)}
 
 				{/* Stats */}
-				<div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-					<Card>
-						<CardContent className="p-4">
-							<div className="flex items-center space-x-2">
-								<Clock className="w-5 h-5 text-yellow-500" />
-								<div>
-									<p className="text-2xl font-bold">
-										{allSwaps.filter((r) => r.status === 'pending').length}
-									</p>
-									<p className="text-sm text-muted-foreground">Pending</p>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-					<Card>
-						<CardContent className="p-4">
-							<div className="flex items-center space-x-2">
-								<MessageCircle className="w-5 h-5 text-blue-500" />
-								<div>
-									<p className="text-2xl font-bold">
-										{allSwaps.filter((r) => r.status === 'accepted').length}
-									</p>
-									<p className="text-sm text-muted-foreground">In Progress</p>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-					<Card>
-						<CardContent className="p-4">
-							<div className="flex items-center space-x-2">
-								<CircleCheckBig className="w-5 h-5 text-green-500" />
-								<div>
-									<p className="text-2xl font-bold">
-										{allSwaps.filter((r) => r.status === 'completed').length}
-									</p>
-									<p className="text-sm text-muted-foreground">Completed</p>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-					<Card>
-						<CardContent className="p-4">
-							<div className="flex items-center space-x-2">
-								<User className="w-5 h-5 text-purple-500" />
-								<div>
-									<p className="text-2xl font-bold">{allSwaps.length}</p>
-									<p className="text-sm text-muted-foreground">Total</p>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
+				<div className="flex items-center gap-6 mb-10 py-4 px-5 rounded-xl bg-muted/50 border border-border overflow-x-auto animate-fade-in">
+					<div className="flex items-center gap-2 shrink-0">
+						<Clock className="w-4 h-4 text-yellow-500" />
+						<span className="text-2xl font-bold tabular-nums">{allSwaps.filter((r) => r.status === 'pending').length}</span>
+						<span className="text-sm text-muted-foreground">Pending</span>
+					</div>
+					<div className="w-px h-8 bg-border shrink-0" />
+					<div className="flex items-center gap-2 shrink-0">
+						<MessageCircle className="w-4 h-4 text-blue-500" />
+						<span className="text-2xl font-bold tabular-nums">{allSwaps.filter((r) => r.status === 'accepted').length}</span>
+						<span className="text-sm text-muted-foreground">In Progress</span>
+					</div>
+					<div className="w-px h-8 bg-border shrink-0" />
+					<div className="flex items-center gap-2 shrink-0">
+						<CircleCheckBig className="w-4 h-4 text-green-500" />
+						<span className="text-2xl font-bold tabular-nums">{allSwaps.filter((r) => r.status === 'completed').length}</span>
+						<span className="text-sm text-muted-foreground">Completed</span>
+					</div>
+					<div className="w-px h-8 bg-border shrink-0" />
+					<div className="flex items-center gap-2 shrink-0">
+						<User className="w-4 h-4 text-purple-500" />
+						<span className="text-2xl font-bold tabular-nums">{allSwaps.length}</span>
+						<span className="text-sm text-muted-foreground">Total</span>
+					</div>
 				</div>
 
 				{/* Tabs */}

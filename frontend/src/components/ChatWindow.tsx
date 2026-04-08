@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, ArrowUp, Loader2, Lock } from 'lucide-react';
+import { ArrowLeft, ArrowUp, Loader2, Lock, Video } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ChatBubble } from '@/components/ChatBubble';
 import { ChatInput } from '@/components/ChatInput';
 import { TypingIndicator } from '@/components/TypingIndicator';
+import { VideoCall } from '@/components/VideoCall';
 import { useAuth } from '@/hooks/useAuth';
 import { useChat } from '@/hooks/useChat';
 import { useE2EEKeys } from '@/hooks/useE2EEKeys';
@@ -30,6 +31,7 @@ interface ChatWindowProps {
  */
 export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
   const { user } = useAuth();
+  const [showVideoCall, setShowVideoCall] = useState(false);
 
   // ── E2EE key derivation ────────────────────────────────────────────────
   const { keyPair } = useE2EEKeys();
@@ -144,7 +146,25 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
             </>
           )}
         </div>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0"
+          onClick={() => setShowVideoCall(true)}
+          aria-label="Start video call"
+        >
+          <Video className="h-5 w-5" />
+        </Button>
       </div>
+
+      {/* ── Video Call Overlay ──────────────────────────────────────────── */}
+      {showVideoCall && (
+        <VideoCall
+          conversationId={conversationId}
+          onClose={() => setShowVideoCall(false)}
+        />
+      )}
 
       {/* ── Messages ───────────────────────────────────────────────────── */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4" data-lenis-prevent>

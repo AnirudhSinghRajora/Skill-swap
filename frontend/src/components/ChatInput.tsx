@@ -210,7 +210,7 @@ export function ChatInput({
   return (
     <div className="border-t border-border bg-card">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-border/50 px-3 py-1.5">
+      <div role="toolbar" aria-label="Text formatting" className="flex flex-wrap items-center gap-0.5 border-b border-border/50 px-3 py-1.5">
         <ToolbarBtn
           onClick={() => editor?.chain().focus().toggleBold().run()}
           active={editor?.isActive('bold')}
@@ -340,9 +340,11 @@ function ToolbarBtn({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      aria-label={title}
       className={cn(
         'inline-flex items-center justify-center rounded p-1.5 text-muted-foreground transition-colors',
         'hover:bg-accent hover:text-foreground',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1',
         'disabled:pointer-events-none disabled:opacity-50',
         active && 'bg-accent text-foreground',
       )}

@@ -358,7 +358,7 @@ function ProfileContent() {
 							) : (
 								<div className="flex flex-col md:flex-row md:items-center md:justify-between">
 									<div>
-										<h1 className="text-3xl font-bold text-foreground mb-2">
+										<h1 className="text-display-md text-foreground mb-2">
 											{profile.name}
 										</h1>
 										<div className="flex items-center space-x-4 text-muted-foreground mb-3">

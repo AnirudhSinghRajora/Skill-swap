@@ -7,9 +7,11 @@ import (
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/availability"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/chat"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/config"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/email"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/rating"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/skill"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/swap"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/video"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -21,9 +23,10 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 	// Initialize services
 	userService := service.NewUserService(userRepo)
-	authService := service.NewAuthService(userRepo, *cfg)
+	authService := service.NewAuthServiceWithDB(userRepo, *cfg, db)
 	skillService := service.NewSkillService(db)
-	notificationService := service.NewNotificationService(db)
+	emailService := email.NewService(*cfg)
+	notificationService := service.NewNotificationServiceWithEmail(db, emailService)
 	swapService := service.NewSwapService(db, notificationService)
 	ratingService := service.NewRatingService(db)
 	adminService := service.NewAdminService(db)
@@ -40,6 +43,10 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	adminHandler := admin.NewHandler(adminService)
 	availabilityHandler := availability.NewHandler(availabilityService)
 	chatHandler := chat.NewHandler(chatService)
+
+	// Video call service
+	videoService := service.NewVideoService(*cfg)
+	videoHandler := video.NewHandler(videoService)
 
 	// WebSocket hub — singleton for the lifetime of the application.
 	hub := chat.NewHub()
@@ -58,6 +65,7 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	SetupSearchRoutes(api, searchService, cfg)
 	SetupFileRoutes(api, fileUploadService, cfg)
 	SetupChatRoutes(api, cfg, chatHandler)
+	SetupVideoRoutes(api, cfg, videoHandler)
 
 	// WebSocket endpoint — auth is handled inside the upgrade handler
 	// (token passed via query param), so no JWT middleware here.

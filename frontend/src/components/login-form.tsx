@@ -1,11 +1,9 @@
 'use client';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SiGoogle } from 'react-icons/si';
-import Image from 'next/image';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api, { setTokens, notifyAuthChange, ApiClientError } from '@/lib/api';
@@ -34,8 +32,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<'div'>) 
       localStorage.setItem('user', JSON.stringify(data.user));
       notifyAuthChange();
 
-      // Initialize E2EE keys (restore backup or generate new)
-      // Fire-and-forget: don't block navigation if E2EE init fails
       initializeE2EE(userData.password).catch(() => {});
 
       router.push('/dashboard');
@@ -57,72 +53,67 @@ export function LoginForm({ className, ...props }: React.ComponentProps<'div'>) 
   };
 
   return (
-    <div className={cn('flex flex-col gap-6', className)} {...props}>
-      <Card className="overflow-hidden p-0">
-        <CardContent className="grid p-0 md:grid-cols-2">
-          <form className="p-6 md:p-8" onSubmit={handleLogin}>
-            <div className="flex flex-col gap-6">
-              <div className="flex flex-col items-center text-center">
-                <h1 className="text-2xl font-bold">Welcome back</h1>
-                <p className="text-muted-foreground">Login to your SkillSwap account</p>
-              </div>
-
-              <div className="grid gap-3">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" required placeholder="abc@example.com"
-                  value={userData.email}
-                  onChange={(e) => setUserData({ ...userData, email: e.target.value })}
-                />
-              </div>
-
-              <div className="grid gap-3">
-                <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" required
-                  value={userData.password}
-                  onChange={(e) => setUserData({ ...userData, password: e.target.value })}
-                  placeholder="Enter your password"
-                />
-              </div>
-
-              {error && <p className="text-red-500 text-sm">{error}</p>}
-
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Logging in...' : 'Login'}
-              </Button>
-
-              <div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
-                <span className="bg-card text-muted-foreground relative z-10 px-2">Or continue with</span>
-              </div>
-
-              <Button variant="outline" type="button" className="w-full"
-                disabled={loading}
-                onClick={() => handleSocialLogin('google')}
-              >
-                <span className="flex gap-2 justify-center items-center">
-                  <SiGoogle className="h-4 w-4" /> Google
-                </span>
-              </Button>
-
-              <div className="text-center text-sm">
-                Don&apos;t have an account?{' '}
-                <a href="/auth/signup" className="underline underline-offset-4">Sign up</a>
-              </div>
-            </div>
-          </form>
-          <div className="bg-muted relative hidden md:block">
-            <Image
-              src="https://media.gettyimages.com/id/1125868664/video/making-smart-moves-across-the-digital-landscape.jpg?s=640x640&k=20&c=94zKlF9shOT1fiQXShCgJHB2X2_AkYAjTJ4tsj-3uTs="
-              alt="Image"
-              width={500}
-              height={500}
-              className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
-            />
-          </div>
-        </CardContent>
-      </Card>
-      <div className="text-muted-foreground text-center text-xs">
-        By continuing, you agree to our <a href="#">Terms</a> & <a href="#">Privacy Policy</a>.
+    <div className={cn('w-full max-w-sm mx-auto', className)} {...props}>
+      <div className="mb-8 text-center">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Welcome back</h1>
+        <p className="text-sm text-muted-foreground mt-1.5">Sign in to your account</p>
       </div>
+
+      <form onSubmit={handleLogin} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email" className="text-sm">Email</Label>
+          <Input id="email" type="email" required placeholder="you@example.com"
+            value={userData.email}
+            onChange={(e) => setUserData({ ...userData, email: e.target.value })}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="password" className="text-sm">Password</Label>
+            <a href="/auth/forgot-password" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              Forgot password?
+            </a>
+          </div>
+          <Input id="password" type="password" required
+            value={userData.password}
+            onChange={(e) => setUserData({ ...userData, password: e.target.value })}
+            placeholder="Enter your password"
+          />
+        </div>
+
+        {error && <p className="text-destructive text-sm">{error}</p>}
+
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading ? 'Signing in…' : 'Sign in'}
+        </Button>
+      </form>
+
+      <div className="relative my-6">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-border" />
+        </div>
+        <div className="relative flex justify-center text-xs">
+          <span className="bg-background px-2 text-muted-foreground">or</span>
+        </div>
+      </div>
+
+      <Button variant="outline" type="button" className="w-full"
+        disabled={loading}
+        onClick={() => handleSocialLogin('google')}
+      >
+        <SiGoogle className="h-4 w-4 mr-2" /> Continue with Google
+      </Button>
+
+      <p className="text-center text-sm text-muted-foreground mt-6">
+        Don&apos;t have an account?{' '}
+        <a href="/auth/signup" className="text-primary hover:underline font-medium">Sign up</a>
+      </p>
+
+      <p className="text-center text-xs text-muted-foreground mt-8">
+        By continuing, you agree to our <a href="#" className="underline underline-offset-2">Terms</a> &{' '}
+        <a href="#" className="underline underline-offset-2">Privacy Policy</a>.
+      </p>
     </div>
   );
 }

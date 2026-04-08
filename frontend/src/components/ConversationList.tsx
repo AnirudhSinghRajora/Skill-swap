@@ -81,8 +81,9 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
           key={conv.conversation_id}
           type="button"
           onClick={() => onSelect(conv.conversation_id)}
+          aria-label={`Conversation with ${conv.other_user.name}${conv.unread_count > 0 ? `, ${conv.unread_count} unread` : ''}`}
           className={cn(
-            'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50',
+            'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset',
             selectedId === conv.conversation_id && 'bg-muted',
           )}
         >

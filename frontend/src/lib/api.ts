@@ -206,6 +206,20 @@ export const auth = {
   me() {
     return apiRequest<{ user_id: string; email: string }>('/auth/me');
   },
+
+  forgotPassword(email: string) {
+    return apiRequest<{ message: string }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  resetPassword(token: string, newPassword: string) {
+    return apiRequest<{ message: string }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
+  },
 };
 
 // ─── Users ───────────────────────────────────────────────────────────────────
@@ -721,6 +735,17 @@ export const e2eeKeys = {
   },
 };
 
+// ─── Video ───────────────────────────────────────────────────────────────────
+
+export const video = {
+  getToken(conversationId: string) {
+    return apiRequest<{ token: string; url: string; room: string }>('/video/token', {
+      method: 'POST',
+      body: JSON.stringify({ conversation_id: conversationId }),
+    });
+  },
+};
+
 // ─── Exports ─────────────────────────────────────────────────────────────────
 
 export const api = {
@@ -737,6 +762,7 @@ export const api = {
   chatImages,
   chatUnread,
   e2eeKeys,
+  video,
 };
 
 export { ApiClientError, clearAuth, getAccessToken, setTokens, notifyAuthChange, updateStoredUser, decodeTokenPayload };

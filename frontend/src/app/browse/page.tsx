@@ -71,9 +71,9 @@ export default function BrowsePage() {
 		<div className="min-h-screen bg-background">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Header */}
-				<div className="mb-8">
-					<h1 className="text-3xl font-bold text-foreground mb-2">Discover People</h1>
-					<p className="text-muted-foreground">
+				<div className="mb-10 animate-fade-in-up">
+					<h1 className="text-display-md text-foreground mb-2">Discover People</h1>
+					<p className="text-muted-foreground text-lg">
 						Find people to exchange skills with in your area
 					</p>
 				</div>
@@ -188,7 +188,7 @@ export default function BrowsePage() {
 
 				{/* User Grid */}
 				{!usersLoading && filteredUsers.length > 0 && (
-					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+					<div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-6">
 						{filteredUsers.map((u) => (
 							<UserCard key={u.user_id} user={u} currentUserId={user?.user_id} />
 						))}
@@ -197,15 +197,15 @@ export default function BrowsePage() {
 
 				{/* Empty State */}
 				{!usersLoading && filteredUsers.length === 0 && (
-					<div className="text-center py-12">
-						<div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
+					<div className="text-center py-16">
+						<div className="w-16 h-16 mx-auto mb-5 bg-muted rounded-2xl flex items-center justify-center">
 							<Search className="w-8 h-8 text-muted-foreground" />
 						</div>
-						<h3 className="text-lg font-medium text-foreground mb-2">No users found</h3>
-						<p className="text-muted-foreground mb-4">
-							Try adjusting your search terms or filters
+						<h3 className="text-lg font-semibold text-foreground mb-2">No matches found</h3>
+						<p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+							Try broadening your search or adjusting filters to discover more people
 						</p>
-						<Button onClick={clearFilters}>Clear all filters</Button>
+						<Button variant="outline" onClick={clearFilters}>Clear all filters</Button>
 					</div>
 				)}
 

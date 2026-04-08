@@ -101,10 +101,10 @@ export default function NotificationsPage() {
 		<div className="min-h-screen bg-background">
 			<div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Header */}
-				<div className="flex items-center justify-between mb-8">
+				<div className="flex items-center justify-between mb-10 animate-fade-in-up">
 					<div>
-						<h1 className="text-3xl font-bold text-foreground mb-2">Notifications</h1>
-						<p className="text-muted-foreground">
+						<h1 className="text-display-md text-foreground mb-2">Notifications</h1>
+						<p className="text-muted-foreground text-lg">
 							{unreadCount > 0
 								? `You have ${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}`
 								: 'All caught up!'}

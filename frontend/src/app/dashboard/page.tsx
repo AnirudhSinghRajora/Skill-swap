@@ -187,19 +187,20 @@ export default function DashboardPage() {
 		<div className="min-h-screen bg-background">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Welcome Header */}
-				<div className="mb-8">
-					<h1 className="text-3xl font-bold text-foreground mb-2">
-						Welcome back, {profile?.name?.split(' ')[0] ?? 'there'}!
+				<div className="mb-10 animate-fade-in-up">
+					<h1 className="text-display-md text-foreground mb-2">
+						Welcome back, {profile?.name?.split(' ')[0] ?? 'there'}
 					</h1>
-					<p className="text-muted-foreground">
+					<p className="text-muted-foreground text-lg">
 						Here&apos;s what&apos;s happening with your skill exchanges
 					</p>
 				</div>
 
 				{/* Stats Grid */}
-				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-					{stats.map((stat) => {
+				<div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12 stagger-children">
+					{stats.map((stat, index) => {
 						const Icon = stat.icon;
+						const isFeatured = index === 0;
 						const linkMap: Record<string, string> = {
 							'Total Swaps': '/swaps',
 							'In Progress': '/swaps',
@@ -207,14 +208,18 @@ export default function DashboardPage() {
 							'Avg Rating': `/profile?tab=reviews`,
 						};
 						return (
-							<Link key={stat.title} href={linkMap[stat.title] ?? '/dashboard'}>
-								<Card className="hover:bg-muted/50 transition-colors cursor-pointer">
+							<Link key={stat.title} href={linkMap[stat.title] ?? '/dashboard'} className={isFeatured ? 'col-span-2 lg:col-span-1' : ''}>
+								<Card className={`transition-colors cursor-pointer h-full ${
+									isFeatured
+										? 'bg-primary/5 border-primary/20 hover:bg-primary/10'
+										: 'hover:bg-muted/50'
+								}`}>
 									<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 										<CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-										<Icon className={`w-4 h-4 ${stat.color}`} />
+										<Icon className={`w-4 h-4 ${isFeatured ? 'text-primary' : stat.color}`} />
 									</CardHeader>
 									<CardContent>
-										<div className="text-2xl font-bold">{stat.value}</div>
+										<div className={`font-bold ${isFeatured ? 'text-3xl' : 'text-2xl'}`}>{stat.value}</div>
 										<p className="text-xs text-muted-foreground">{stat.description}</p>
 									</CardContent>
 								</Card>
@@ -283,8 +288,12 @@ export default function DashboardPage() {
 										})}
 									</div>
 								) : (
-									<div className="text-center py-8 text-muted-foreground">
-										<p>No swap activity yet. Browse users to get started!</p>
+								<div className="text-center py-12">
+									<div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-muted flex items-center justify-center">
+										<TrendingUp className="w-7 h-7 text-muted-foreground" />
+									</div>
+									<h3 className="font-medium text-foreground mb-1">No swaps yet</h3>
+									<p className="text-sm text-muted-foreground">Browse users to find your first skill exchange</p>
 									</div>
 								)}
 								<div className="mt-4">

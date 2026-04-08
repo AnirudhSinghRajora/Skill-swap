@@ -147,6 +147,8 @@ func (wh *WSHandler) processMessage(client *Client, raw []byte) {
 		wh.handleStopTyping(client, msg)
 	case "mark_read":
 		wh.handleMarkRead(client, msg)
+	case "call_invite", "call_accept", "call_reject", "call_end":
+		wh.handleCallSignal(client, msg)
 	default:
 		wh.sendError(client, "Unknown message type: "+msg.Type, msg.Type, msg.TempID)
 	}
@@ -321,4 +323,35 @@ func (wh *WSHandler) sendError(client *Client, message, refType, tempID string) 
 	default:
 		// Buffer full — client will be evicted by the hub.
 	}
+}
+
+// ── Call signaling ───────────────────────────────────────────────────────────
+
+// handleCallSignal forwards call_invite / call_accept / call_reject / call_end
+// to the other participant in the conversation via WebSocket.
+func (wh *WSHandler) handleCallSignal(client *Client, msg wsIncoming) {
+	convID, err := uuid.Parse(msg.ConversationID)
+	if err != nil {
+		wh.sendError(client, "Invalid conversation_id", msg.Type, msg.TempID)
+		return
+	}
+
+	userID, err := uuid.Parse(client.UserID)
+	if err != nil {
+		return
+	}
+
+	ok, err := wh.chatRepo.IsParticipant(userID, convID)
+	if err != nil || !ok {
+		wh.sendError(client, "Not a participant", msg.Type, msg.TempID)
+		return
+	}
+
+	out := wsOutgoing{
+		Type:           msg.Type,
+		ConversationID: msg.ConversationID,
+		UserID:         client.UserID,
+	}
+	data, _ := json.Marshal(out)
+	wh.sendToOtherParticipant(convID, client.UserID, data)
 }

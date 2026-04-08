@@ -182,7 +182,7 @@ export function ChatBubble({ message, isOwn, sharedKey }: ChatBubbleProps) {
             <Lock className="h-2.5 w-2.5" />
           )}
           {message.is_edited && <span>edited</span>}
-          <time>{formatMessageTime(message.created_at)}</time>
+          <time dateTime={message.created_at}>{formatMessageTime(message.created_at)}</time>
         </div>
       </div>
 

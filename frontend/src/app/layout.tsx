@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { QueryClientProvider } from '@/providers/QueryClientProvider';
+import { ThemeProvider } from '@/providers/ThemeProvider';
 import { Navigation } from '@/components/Navigation';
 import './globals.css';
 import { SmoothScroll } from '@/components/smooth-scroll';
@@ -27,16 +28,18 @@ export default function RootLayout({
 	children: React.ReactNode;
 }>) {
 	return (
-		<html lang="en">
+		<html lang="en" suppressHydrationWarning>
 			<body
 				className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background`}
 			>
-				<SmoothScroll />
-				<QueryClientProvider>
-					<Navigation />
-					<main className="min-h-screen">{children}</main>
-					<Toaster richColors position="top-right" />
-				</QueryClientProvider>
+				<ThemeProvider>
+					<SmoothScroll />
+					<QueryClientProvider>
+						<Navigation />
+						<main className="min-h-screen">{children}</main>
+						<Toaster richColors position="top-right" />
+					</QueryClientProvider>
+				</ThemeProvider>
 			</body>
 		</html>
 	);

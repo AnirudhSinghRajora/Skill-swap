@@ -70,14 +70,14 @@ export function UserCard({ user, currentUserId }: UserCardProps) {
 			<CardContent className="space-y-4">
 				{/* Skills Offered */}
 				<div>
-					<h4 className="text-sm font-medium text-muted-foreground mb-2">
-						Skills Offered
+					<h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+						Can Teach
 					</h4>
-					<div className="flex flex-wrap gap-1">
+					<div className="flex flex-wrap gap-1.5">
 						{user.skills_offered
 							.filter((skill) => skill)
 							.map((skill) => (
-								<Badge key={skill.skill_id} variant="secondary" className="text-xs">
+								<Badge key={skill.skill_id} variant="outline" className="text-xs">
 									{skill.name}
 								</Badge>
 							))}
@@ -86,14 +86,14 @@ export function UserCard({ user, currentUserId }: UserCardProps) {
 
 				{/* Skills Wanted */}
 				<div>
-					<h4 className="text-sm font-medium text-muted-foreground mb-2">
-						Skills Wanted
+					<h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+						Wants to Learn
 					</h4>
-					<div className="flex flex-wrap gap-1">
+					<div className="flex flex-wrap gap-1.5">
 						{user.skills_wanted
 							.filter((skill) => skill)
 							.map((skill) => (
-								<Badge key={skill.skill_id} variant="outline" className="text-xs">
+								<Badge key={skill.skill_id} variant="secondary" className="text-xs">
 									{skill.name}
 								</Badge>
 							))}

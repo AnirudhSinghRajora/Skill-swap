@@ -2,20 +2,27 @@ package service
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/email"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 type NotificationService struct {
-	db *gorm.DB
+	db           *gorm.DB
+	emailService *email.Service
 }
 
 func NewNotificationService(db *gorm.DB) *NotificationService {
 	return &NotificationService{db: db}
+}
+
+func NewNotificationServiceWithEmail(db *gorm.DB, emailService *email.Service) *NotificationService {
+	return &NotificationService{db: db, emailService: emailService}
 }
 
 // CreateNotification creates a new notification
@@ -52,6 +59,17 @@ func (s *NotificationService) CreateSwapRequestNotification(receiverID, requeste
 	}
 
 	_, err := s.CreateNotification(req)
+
+	// Send email notification
+	if s.emailService != nil && s.emailService.IsConfigured() {
+		var receiver models.User
+		if err := s.db.Select("name, email").First(&receiver, "user_id = ?", receiverID).Error; err == nil {
+			if emailErr := s.emailService.SendSwapRequest(receiver.Email, receiver.Name, requester.Name, skillName); emailErr != nil {
+				log.Printf("Failed to send swap request email: %v", emailErr)
+			}
+		}
+	}
+
 	return err
 }
 
@@ -86,6 +104,17 @@ func (s *NotificationService) CreateSwapStatusNotification(userID uuid.UUID, swa
 	}
 
 	_, err := s.CreateNotification(req)
+
+	// Send email notification for swap status change
+	if s.emailService != nil && s.emailService.IsConfigured() {
+		var user models.User
+		if err := s.db.Select("name, email").First(&user, "user_id = ?", userID).Error; err == nil {
+			if emailErr := s.emailService.SendSwapStatusChange(user.Email, user.Name, "", status); emailErr != nil {
+				log.Printf("Failed to send swap status email: %v", emailErr)
+			}
+		}
+	}
+
 	return err
 }
 

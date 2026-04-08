@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Avatar } from '@/components/ui/avatar';
-import { Bell, Home, Users, User, Settings, LogOut, ArrowRight, Menu, X, MessageCircle } from 'lucide-react';
+import { Bell, Home, Users, User, Settings, LogOut, ArrowRight, Menu, X, MessageCircle, Moon, Sun } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useUnreadCount } from '@/hooks/useUnreadCount';
 import { useQuery } from '@tanstack/react-query';
@@ -15,12 +16,13 @@ export function Navigation() {
 	const pathname = usePathname();
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 	const { isAuthenticated, isLoading: authLoading, user, logout } = useAuth();
+	const { theme, setTheme } = useTheme();
 
 	const { data: notifStats } = useQuery({
 		queryKey: ['notification-stats'],
 		queryFn: () => api.notifications.stats(),
 		enabled: isAuthenticated,
-		refetchInterval: 30000, // poll every 30s
+		refetchInterval: 30000,
 	});
 
 	const unreadCount = notifStats?.unread_count ?? 0;
@@ -35,25 +37,24 @@ export function Navigation() {
 		{ href: '/settings', label: 'Settings', icon: Settings }
 	];
 
-	// Don't show nav on auth pages
 	const isAuthPage = pathname?.startsWith('/auth');
 	if (isAuthPage) return null;
 
 	return (
-		<nav className="sticky top-0 z-50 bg-card border-b border-border">
+		<nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-				<div className="flex justify-between items-center h-16">
+				<div className="flex justify-between items-center h-14">
 					{/* Logo */}
-					<Link href="/" className="flex items-center space-x-2">
-						<div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-							<span className="text-primary-foreground font-bold text-sm">SS</span>
+					<Link href="/" className="flex items-center gap-2.5">
+						<div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center">
+							<span className="text-primary-foreground font-bold text-xs">SS</span>
 						</div>
-						<span className="font-bold text-xl text-foreground">SkillSwap</span>
+						<span className="font-semibold text-foreground tracking-tight">SkillSwap</span>
 					</Link>
 
-					{/* Navigation Links - only show when authenticated */}
+					{/* Navigation Links */}
 					{isAuthenticated && (
-						<div className="hidden md:flex items-center space-x-1">
+						<div className="hidden md:flex items-center gap-1">
 							{navItems.map((item) => {
 								const Icon = item.icon;
 								const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname?.startsWith(item.href));
@@ -64,12 +65,12 @@ export function Navigation() {
 										<Button
 											variant={isActive ? 'default' : 'ghost'}
 											size="sm"
-											className="relative flex items-center space-x-2"
+											className="relative gap-1.5 text-sm"
 										>
-											<Icon className="w-4 h-4" />
+											<Icon className="w-3.5 h-3.5" />
 											<span>{item.label}</span>
 											{badgeCount > 0 && (
-												<span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] rounded-full w-5 h-5 flex items-center justify-center">
+												<span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] rounded-full w-4.5 h-4.5 flex items-center justify-center">
 													{badgeCount > 99 ? '99+' : badgeCount}
 												</span>
 											)}
@@ -81,15 +82,27 @@ export function Navigation() {
 					)}
 
 					{/* Right side */}
-					<div className="flex items-center space-x-4">
+					<div className="flex items-center gap-1">
+						{/* Theme toggle */}
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+							className="w-8 h-8 p-0"
+						>
+							<Sun className="w-4 h-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" />
+							<Moon className="absolute w-4 h-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" />
+							<span className="sr-only">Toggle theme</span>
+						</Button>
+
 						{isAuthenticated ? (
 							<>
 								{/* Notifications */}
 								<Link href="/notifications">
-									<Button variant="ghost" size="sm" className="relative">
-										<Bell className="w-5 h-5" />
+									<Button variant="ghost" size="sm" className="relative w-8 h-8 p-0">
+										<Bell className="w-4 h-4" />
 										{unreadCount > 0 && (
-											<span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center">
+											<span className="absolute -top-0.5 -right-0.5 bg-destructive text-destructive-foreground text-[10px] rounded-full w-4 h-4 flex items-center justify-center animate-badge-pulse">
 												{unreadCount > 99 ? '99+' : unreadCount}
 											</span>
 										)}
@@ -97,39 +110,39 @@ export function Navigation() {
 								</Link>
 
 								{/* Profile Avatar */}
-								<Link href="/profile">
+								<Link href="/profile" className="ml-1">
 									<Avatar
 										src={user?.has_photo ? getPhotoUrl(user.user_id) : undefined}
 										alt={user?.name || 'Profile'}
 										fallback={user?.name?.charAt(0)?.toUpperCase() || 'U'}
-										className="w-8 h-8 cursor-pointer"
+										className="w-7 h-7 cursor-pointer"
 									/>
 								</Link>
 
 								{/* Logout */}
-								<Button variant="ghost" size="sm" onClick={logout}>
-									<LogOut className="w-4 h-4" />
+								<Button variant="ghost" size="sm" onClick={logout} className="w-8 h-8 p-0">
+									<LogOut className="w-3.5 h-3.5" />
 								</Button>
 
 								{/* Mobile menu toggle */}
 								<Button
 									variant="ghost"
 									size="sm"
-									className="md:hidden"
+									className="md:hidden w-8 h-8 p-0"
 									onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
 								>
-									{mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+									{mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
 								</Button>
 							</>
 						) : authLoading ? (
-							<div className="w-20" /> /* placeholder to prevent layout shift */
+							<div className="w-20" />
 						) : (
-							<div className="flex items-center space-x-2">
+							<div className="flex items-center gap-2">
 								<Link href="/auth/signin">
-									<Button variant="ghost" size="sm">Sign In</Button>
+									<Button variant="ghost" size="sm" className="text-sm">Sign In</Button>
 								</Link>
 								<Link href="/auth/signup">
-									<Button size="sm">Sign Up</Button>
+									<Button size="sm" className="text-sm">Sign Up</Button>
 								</Link>
 							</div>
 						)}
@@ -149,7 +162,7 @@ export function Navigation() {
 									<Button
 										variant={isActive ? 'default' : 'ghost'}
 										size="sm"
-										className="w-full justify-start flex items-center space-x-2"
+										className="w-full justify-start gap-2"
 									>
 										<Icon className="w-4 h-4" />
 										<span>{item.label}</span>
