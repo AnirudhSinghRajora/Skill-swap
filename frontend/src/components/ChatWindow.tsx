@@ -208,6 +208,7 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
 
       {/* ── Input ──────────────────────────────────────────────────────── */}
       <ChatInput
+        conversationId={conversationId}
         onSend={(content, imageIds) => {
           sendMessage(content, imageIds);
           stopTyping();

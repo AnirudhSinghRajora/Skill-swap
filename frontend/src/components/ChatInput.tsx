@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import { mergeAttributes } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import LinkExtension from '@tiptap/extension-link';
 import ImageExtension from '@tiptap/extension-image';
@@ -26,6 +27,7 @@ import api from '@/lib/api';
 import { encryptBinary } from '@/lib/e2ee/crypto';
 
 interface ChatInputProps {
+  conversationId?: string;
   onSend: (content: string, imageIds: string[]) => void;
   onTyping?: () => void;
   disabled?: boolean;
@@ -34,8 +36,39 @@ interface ChatInputProps {
 }
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 MB before compression
+const DRAFT_KEY_PREFIX = 'skillswap:chat-draft:';
+
+const EncryptedImageExtension = ImageExtension.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      encryptedImageId: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute('data-encrypted-image-id'),
+        renderHTML: (attributes: { encryptedImageId?: string | null }) => {
+          if (!attributes.encryptedImageId) return {};
+          return { 'data-encrypted-image-id': attributes.encryptedImageId };
+        },
+      },
+    };
+  },
+  renderHTML({ HTMLAttributes }) {
+    const attrs = { ...HTMLAttributes } as Record<string, string | null | undefined>;
+    if (attrs['data-encrypted-image-id'] && !attrs.src) {
+      delete attrs.src;
+    }
+    return ['img', mergeAttributes(this.options.HTMLAttributes, attrs)];
+  },
+});
+
+const QUICK_STARTERS = [
+  'Can we lock in a 30-minute swap this week?',
+  'I can teach this in exchange for help with that. Does that work for you?',
+  'Want to jump on a video call to align on goals?',
+];
 
 export function ChatInput({
+  conversationId,
   onSend,
   onTyping,
   disabled = false,
@@ -48,6 +81,9 @@ export function ChatInput({
   const onTypingRef = useRef(onTyping);
   onTypingRef.current = onTyping;
   const handleSendRef = useRef<() => void>(() => {});
+  const draftStorageKey = conversationId ? `${DRAFT_KEY_PREFIX}${conversationId}` : null;
+  const draftStorageKeyRef = useRef<string | null>(draftStorageKey);
+  draftStorageKeyRef.current = draftStorageKey;
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -62,7 +98,7 @@ export function ChatInput({
           rel: 'noopener noreferrer',
         },
       }),
-      ImageExtension.configure({
+      EncryptedImageExtension.configure({
         inline: false,
         allowBase64: false,
       }),
@@ -78,8 +114,23 @@ export function ChatInput({
         return false;
       },
     },
-    onUpdate() {
+    onUpdate({ editor: currentEditor }) {
       onTypingRef.current?.();
+
+      if (typeof window === 'undefined') return;
+
+      const key = draftStorageKeyRef.current;
+      if (!key) return;
+
+      const html = currentEditor.getHTML();
+      const hasText = currentEditor.getText().trim().length > 0;
+      const hasImages = html.includes('<img');
+
+      if (hasText || hasImages) {
+        window.localStorage.setItem(key, html);
+      } else {
+        window.localStorage.removeItem(key);
+      }
     },
     onTransaction() {
       setRenderTrigger((c) => c + 1);
@@ -90,6 +141,19 @@ export function ChatInput({
   useEffect(() => {
     editor?.setEditable(!disabled);
   }, [editor, disabled]);
+
+  // Restore draft when opening a conversation
+  useEffect(() => {
+    if (!editor || !draftStorageKey || typeof window === 'undefined') return;
+
+    const savedDraft = window.localStorage.getItem(draftStorageKey);
+    if (!savedDraft) {
+      editor.commands.clearContent();
+      return;
+    }
+
+    editor.commands.setContent(savedDraft, { emitUpdate: false });
+  }, [editor, draftStorageKey]);
 
   // ── Send ──────────────────────────────────────────────────────────────────
 
@@ -110,6 +174,10 @@ export function ChatInput({
 
     onSend(html, imageIds);
     editor.commands.clearContent();
+
+    if (draftStorageKeyRef.current && typeof window !== 'undefined') {
+      window.localStorage.removeItem(draftStorageKeyRef.current);
+    }
   }, [editor, onSend]);
 
   handleSendRef.current = handleSend;
@@ -152,22 +220,12 @@ export function ChatInput({
           const encryptedBlob = new Blob([encryptedBytes], { type: 'application/octet-stream' });
 
           const res = await api.chatImages.upload(encryptedBlob, true);
-          // Insert a placeholder image with a data attribute instead of a src URL
+          // Persist encrypted image ID in the editor doc so send/restore keep it.
           editor
             .chain()
             .focus()
-            .setImage({ src: '', alt: 'Encrypted image' })
+            .insertContent(`<img alt="Encrypted image" data-encrypted-image-id="${res.image_id}" />`)
             .run();
-
-          // TipTap doesn't natively support data-* attributes on images,
-          // so we set it on the last inserted <img> via the DOM
-          const view = editor.view;
-          const imgs = view.dom.querySelectorAll('img[alt="Encrypted image"]:not([data-encrypted-image-id])');
-          const lastImg = imgs[imgs.length - 1];
-          if (lastImg) {
-            lastImg.setAttribute('data-encrypted-image-id', res.image_id);
-            lastImg.removeAttribute('src');
-          }
         } else {
           // Plaintext upload: existing behavior
           const res = await api.chatImages.upload(compressed);
@@ -203,9 +261,18 @@ export function ChatInput({
     editor.chain().focus().setLink({ href: url }).run();
   }, [editor]);
 
+  const insertQuickStarter = useCallback(
+    (text: string) => {
+      editor?.chain().focus().insertContent(`${text} `).run();
+    },
+    [editor],
+  );
+
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const isEmpty = !editor || editor.isEmpty;
+  const canSend =
+    !!editor &&
+    (editor.getText().trim().length > 0 || editor.getHTML().includes('<img'));
 
   return (
     <div className="border-t border-border bg-card">
@@ -300,6 +367,22 @@ export function ChatInput({
         </span>
       </div>
 
+      {/* Quick starters */}
+      {!!editor && editor.isEmpty && !disabled && (
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
+          {QUICK_STARTERS.map((starter) => (
+            <button
+              key={starter}
+              type="button"
+              onClick={() => insertQuickStarter(starter)}
+              className="rounded-full border border-border/80 bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+            >
+              {starter}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Editor + send button */}
       <div className="flex items-end gap-2 px-4 py-3">
         <div className="flex-1 min-h-[2.5rem] max-h-[12rem] overflow-y-auto rounded-lg border border-border bg-background px-3 py-2 text-sm focus-within:ring-2 focus-within:ring-primary/40">
@@ -308,7 +391,7 @@ export function ChatInput({
         <Button
           size="icon"
           onClick={handleSend}
-          disabled={disabled || isEmpty}
+          disabled={disabled || !canSend}
           aria-label="Send message (Enter)"
           title="Send (Enter)"
         >
