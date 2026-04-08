@@ -34,6 +34,32 @@ services:
     ports:
       - "8080:8080"
 
+  db-seed:
+    image: postgres:16-alpine
+    profiles: ["seed"]
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-skillswap}
+      POSTGRES_USER: ${POSTGRES_USER:-skillswap}
+      POSTGRES_DB: ${POSTGRES_DB:-skillswap}
+    volumes:
+      - ./backend/skillswap/seeds/mock_data.sql:/seed/mock_data.sql:ro
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        until psql -h db -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -c "SELECT 1 FROM information_schema.tables WHERE table_name='users'" | grep -q 1; do
+          echo "Waiting for backend migrations to create tables..."
+          sleep 2
+        done
+        psql -v ON_ERROR_STOP=1 -h db -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -f /seed/mock_data.sql
+        echo "Mock data loaded successfully."
+
   frontend:
     build:
       context: ./frontend
