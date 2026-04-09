@@ -54,7 +54,7 @@ const EncryptedImageExtension = ImageExtension.extend({
   },
   renderHTML({ HTMLAttributes }) {
     const attrs = { ...HTMLAttributes } as Record<string, string | null | undefined>;
-    if (attrs['data-encrypted-image-id'] && !attrs.src) {
+    if (attrs['data-encrypted-image-id']) {
       delete attrs.src;
     }
     return ['img', mergeAttributes(this.options.HTMLAttributes, attrs)];
@@ -220,11 +220,16 @@ export function ChatInput({
           const encryptedBlob = new Blob([encryptedBytes], { type: 'application/octet-stream' });
 
           const res = await api.chatImages.upload(encryptedBlob, true);
-          // Persist encrypted image ID in the editor doc so send/restore keep it.
+          // Insert as an actual TipTap image node. Raw insertContent can be serialized
+          // as text in some cases when src is omitted.
           editor
             .chain()
             .focus()
-            .insertContent(`<img alt="Encrypted image" data-encrypted-image-id="${res.image_id}" />`)
+            .setImage({
+              src: 'encrypted-image',
+              alt: 'Encrypted image',
+              encryptedImageId: res.image_id,
+            } as unknown as { src: string; alt: string; encryptedImageId: string })
             .run();
         } else {
           // Plaintext upload: existing behavior

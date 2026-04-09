@@ -21,6 +21,16 @@ const SANITIZE_CONFIG = {
   ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'class', 'data-encrypted-image-id'],
 };
 
+const UUID_RE = '[0-9a-fA-F-]{36}';
+const ENCRYPTED_TAG_ESCAPED_DOUBLE = new RegExp(
+  `&lt;img[^&]*data-encrypted-image-id=(?:&quot;|")(${UUID_RE})(?:&quot;|")[^&]*\\/?&gt;`,
+  'gi',
+);
+const ENCRYPTED_TAG_ESCAPED_SINGLE = new RegExp(
+  `&lt;img[^&]*data-encrypted-image-id=(?:&#39;|')(${UUID_RE})(?:&#39;|')[^&]*\\/?&gt;`,
+  'gi',
+);
+
 /**
  * Ensure links open in a new tab and images lazy-load.
  * Hooks are additive, so guard with a module-level flag.
@@ -44,13 +54,33 @@ function ensureDOMPurifyHooks() {
 const HAS_HTML = /<[a-z][\s\S]*?>/i;
 
 /**
+ * Some editor serialization paths can produce escaped encrypted image tags
+ * (`&lt;img ... data-encrypted-image-id=... /&gt;`) as plain text.
+ * Normalize only this known-safe placeholder shape back to an image tag
+ * before sanitization.
+ */
+function normalizeEncryptedImagePlaceholders(content: string): string {
+  return content
+    .replace(
+      ENCRYPTED_TAG_ESCAPED_DOUBLE,
+      '<img alt="Encrypted image" data-encrypted-image-id="$1" />',
+    )
+    .replace(
+      ENCRYPTED_TAG_ESCAPED_SINGLE,
+      '<img alt="Encrypted image" data-encrypted-image-id="$1" />',
+    );
+}
+
+/**
  * Sanitise message content for safe rendering.
  * Plain-text messages (no HTML tags) get newlines converted to `<br>`.
  */
 function sanitizeContent(content: string): string {
+  const normalized = normalizeEncryptedImagePlaceholders(content);
+
   if (typeof window === 'undefined') {
     // SSR: escape everything – client hydration will apply proper sanitization
-    return content
+    return normalized
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
@@ -59,9 +89,9 @@ function sanitizeContent(content: string): string {
 
   ensureDOMPurifyHooks();
 
-  if (!HAS_HTML.test(content)) {
+  if (!HAS_HTML.test(normalized)) {
     // Legacy plain-text message – escape & convert newlines
-    const escaped = content
+    const escaped = normalized
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
@@ -69,7 +99,7 @@ function sanitizeContent(content: string): string {
     return DOMPurify.sanitize(escaped, SANITIZE_CONFIG);
   }
 
-  return DOMPurify.sanitize(content, SANITIZE_CONFIG);
+  return DOMPurify.sanitize(normalized, SANITIZE_CONFIG);
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -81,7 +111,10 @@ interface ChatBubbleProps {
 }
 
 /** Regex to detect encrypted-image placeholder <img> tags in sanitized HTML. */
-const ENCRYPTED_IMG_RE = /<img[^>]*data-encrypted-image-id="([^"]+)"[^>]*\/?>/g;
+const ENCRYPTED_IMG_RE = new RegExp(
+  `<img[^>]*data-encrypted-image-id=["'](${UUID_RE})["'][^>]*\\/?>`,
+  'gi',
+);
 
 /**
  * Split sanitized HTML into alternating segments of plain HTML and encrypted

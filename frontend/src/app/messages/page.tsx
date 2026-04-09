@@ -104,7 +104,7 @@ function MessagesContent() {
 
 function EmptyState() {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-muted-foreground">
       <MessageCircle className="h-12 w-12 opacity-30" />
       <p className="text-sm">Select a conversation to start chatting</p>
     </div>
