@@ -523,12 +523,12 @@ function SwapsContent() {
 		<div className="min-h-screen bg-background">
 			<div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Header */}
-				<div className="flex items-center justify-between mb-10 animate-fade-in-up">
+				<div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-10 animate-fade-in-up">
 					<div>
 						<h1 className="text-display-md text-foreground mb-2">Swap Requests</h1>
 						<p className="text-muted-foreground text-lg">Manage your skill exchange requests</p>
 					</div>
-					<Link href="/browse">
+					<Link href="/browse" className="self-start sm:self-auto">
 						<Button>
 							<ArrowRight className="w-4 h-4 mr-2" />
 							Find People
@@ -661,27 +661,24 @@ function SwapsContent() {
 				)}
 
 				{/* Stats */}
-				<div className="flex items-center gap-6 mb-10 py-4 px-5 rounded-xl bg-muted/50 border border-border overflow-x-auto animate-fade-in">
-					<div className="flex items-center gap-2 shrink-0">
-						<Clock className="w-4 h-4 text-yellow-500" />
+				<div className="grid grid-cols-2 sm:grid-cols-4 gap-px mb-10 rounded-xl bg-border border border-border overflow-hidden animate-fade-in">
+					<div className="flex items-center gap-2 bg-muted/40 px-4 py-4">
+						<Clock className="w-4 h-4 text-yellow-500 shrink-0" />
 						<span className="text-2xl font-bold tabular-nums">{allSwaps.filter((r) => r.status === 'pending').length}</span>
 						<span className="text-sm text-muted-foreground">Pending</span>
 					</div>
-					<div className="w-px h-8 bg-border shrink-0" />
-					<div className="flex items-center gap-2 shrink-0">
-						<MessageCircle className="w-4 h-4 text-blue-500" />
+					<div className="flex items-center gap-2 bg-muted/40 px-4 py-4">
+						<MessageCircle className="w-4 h-4 text-blue-500 shrink-0" />
 						<span className="text-2xl font-bold tabular-nums">{allSwaps.filter((r) => r.status === 'accepted').length}</span>
 						<span className="text-sm text-muted-foreground">In Progress</span>
 					</div>
-					<div className="w-px h-8 bg-border shrink-0" />
-					<div className="flex items-center gap-2 shrink-0">
-						<CircleCheckBig className="w-4 h-4 text-green-500" />
+					<div className="flex items-center gap-2 bg-muted/40 px-4 py-4">
+						<CircleCheckBig className="w-4 h-4 text-green-500 shrink-0" />
 						<span className="text-2xl font-bold tabular-nums">{allSwaps.filter((r) => r.status === 'completed').length}</span>
 						<span className="text-sm text-muted-foreground">Completed</span>
 					</div>
-					<div className="w-px h-8 bg-border shrink-0" />
-					<div className="flex items-center gap-2 shrink-0">
-						<User className="w-4 h-4 text-purple-500" />
+					<div className="flex items-center gap-2 bg-muted/40 px-4 py-4">
+						<User className="w-4 h-4 text-purple-500 shrink-0" />
 						<span className="text-2xl font-bold tabular-nums">{allSwaps.length}</span>
 						<span className="text-sm text-muted-foreground">Total</span>
 					</div>

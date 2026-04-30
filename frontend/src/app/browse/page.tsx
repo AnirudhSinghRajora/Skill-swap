@@ -71,77 +71,74 @@ export default function BrowsePage() {
 		<div className="min-h-screen bg-background">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Header */}
-				<div className="mb-10 animate-fade-in-up">
-					<h1 className="text-display-md text-foreground mb-2">Discover People</h1>
-					<p className="text-muted-foreground text-lg">
-						Find people to exchange skills with in your area
-					</p>
+				<div className="mb-10 animate-fade-in-up flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+					<div>
+						<h1 className="text-display-md text-foreground mb-2">Discover People</h1>
+						<p className="text-muted-foreground text-lg">
+							Find people to exchange skills with in your area
+						</p>
+					</div>
+					{(searchTerm || selectedSkills.length > 0 || locationFilter) && (
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={clearFilters}
+							className="self-start md:self-auto"
+						>
+							Clear filters
+						</Button>
+					)}
 				</div>
 
 				{/* Search and Filters */}
-				<div className="mb-8 space-y-4">
-					<div className="relative">
-						<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-						<Input
-							placeholder="Search by name or skill..."
-							value={searchTerm}
-							onChange={(e) => {
-								setSearchTerm(e.target.value);
-								setPage(1);
-							}}
-							className="pl-10"
-						/>
-					</div>
-
-					<div className="flex flex-wrap gap-4 items-center">
-						<div className="flex items-center space-x-2">
-							<Filter className="w-4 h-4 text-muted-foreground" />
-							<span className="text-sm font-medium">Filters:</span>
-						</div>
-
-						<div className="flex items-center space-x-2">
-							<MapPin className="w-4 h-4 text-muted-foreground" />
+				<div className="mb-10 space-y-5">
+					{/* Top row: search + location, side by side on md+ */}
+					<div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+						<div className="relative">
+							<Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
 							<Input
-								placeholder="Filter by location..."
+								placeholder="Search by name or skill..."
+								value={searchTerm}
+								onChange={(e) => {
+									setSearchTerm(e.target.value);
+									setPage(1);
+								}}
+								className="pl-10"
+							/>
+						</div>
+						<div className="relative sm:w-64">
+							<MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+							<Input
+								placeholder="Location"
 								value={locationFilter}
 								onChange={(e) => {
 									setLocationFilter(e.target.value);
 									setPage(1);
 								}}
-								className="w-48 h-8 text-sm"
+								className="pl-10"
 							/>
 						</div>
-
-						{allSkills && (
-							<div className="flex flex-wrap gap-2">
-								{allSkills.slice(0, 10).map((skill) => (
-									<Badge
-										key={skill.skill_id}
-										variant={
-											selectedSkills.includes(skill.skill_id)
-												? 'default'
-												: 'outline'
-										}
-										className="cursor-pointer hover:bg-primary/10"
-										onClick={() => toggleSkillFilter(skill.skill_id)}
-									>
-										{skill.name}
-									</Badge>
-								))}
-							</div>
-						)}
-
-						{(searchTerm || selectedSkills.length > 0 || locationFilter) && (
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={clearFilters}
-								className="ml-auto"
-							>
-								Clear Filters
-							</Button>
-						)}
 					</div>
+
+					{/* Skill chips row */}
+					{allSkills && allSkills.length > 0 && (
+						<div className="flex flex-wrap items-center gap-2">
+							<div className="flex items-center gap-1.5 text-xs uppercase tracking-[0.14em] text-muted-foreground mr-1">
+								<Filter className="w-3.5 h-3.5" />
+								<span>Skills</span>
+							</div>
+							{allSkills.slice(0, 12).map((skill) => (
+								<Badge
+									key={skill.skill_id}
+									variant={selectedSkills.includes(skill.skill_id) ? 'default' : 'outline'}
+									className="cursor-pointer hover:bg-primary/10 transition-colors"
+									onClick={() => toggleSkillFilter(skill.skill_id)}
+								>
+									{skill.name}
+								</Badge>
+							))}
+						</div>
+					)}
 				</div>
 
 				{/* Results count */}

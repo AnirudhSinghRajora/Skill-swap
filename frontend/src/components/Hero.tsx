@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowUpRight } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 /* Two columns of skills that rotate in tandem.
    Index N on the left "trades" with index N on the right.
@@ -20,6 +21,7 @@ const SWAPS: Array<[string, string]> = [
 
 const HeroSection = () => {
 	const [i, setI] = useState(0);
+	const { isAuthenticated, isLoading: authLoading } = useAuth();
 
 	useEffect(() => {
 		const t = setInterval(() => setI((n) => (n + 1) % SWAPS.length), 2600);
@@ -27,6 +29,9 @@ const HeroSection = () => {
 	}, []);
 
 	const [left, right] = SWAPS[i];
+
+	const ctaHref = isAuthenticated ? '/dashboard' : '/auth/signup';
+	const ctaLabel = isAuthenticated ? 'Open dashboard' : 'Start a swap';
 
 	return (
 		<section className="relative overflow-hidden">
@@ -129,9 +134,9 @@ const HeroSection = () => {
 					className="mt-12 flex flex-col items-start justify-between gap-10 border-t border-foreground/10 pt-10 lg:flex-row lg:items-end lg:gap-16"
 				>
 					<div className="flex flex-wrap items-center gap-3">
-						<Button asChild variant="brand" size="lg">
-							<Link href="/auth/signup">
-								Start a swap
+						<Button asChild variant="brand" size="lg" disabled={authLoading}>
+							<Link href={ctaHref}>
+								{ctaLabel}
 								<ArrowUpRight className="ml-1 h-4 w-4" />
 							</Link>
 						</Button>

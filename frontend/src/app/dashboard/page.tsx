@@ -197,7 +197,7 @@ export default function DashboardPage() {
 				</div>
 
 				{/* Stats Grid */}
-				<div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12 stagger-children">
+				<div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-12 stagger-children">
 					{stats.map((stat, index) => {
 						const Icon = stat.icon;
 						const isFeatured = index === 0;
@@ -228,9 +228,9 @@ export default function DashboardPage() {
 					})}
 				</div>
 
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-					{/* Recent Activity */}
-					<div className="lg:col-span-2">
+				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+					{/* Recent Activity + Skills */}
+					<div className="lg:col-span-2 space-y-6">
 						<Card>
 							<CardHeader>
 								<CardTitle>Recent Activity</CardTitle>
@@ -306,6 +306,66 @@ export default function DashboardPage() {
 								</div>
 							</CardContent>
 						</Card>
+
+						{/* Your Skills — now in the left column to balance height */}
+						{profile && (
+							<Card>
+								<CardHeader>
+									<CardTitle>Your Skills</CardTitle>
+									<CardDescription>What you offer and what you&apos;re looking to learn</CardDescription>
+								</CardHeader>
+								<CardContent>
+									<div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+										<div>
+											<h4 className="text-sm font-medium mb-3 flex items-center justify-between">
+												<span>Offering</span>
+												<span className="text-xs text-muted-foreground tabular-nums">
+													{profile.skills_offered.length}
+												</span>
+											</h4>
+											<div className="flex flex-wrap gap-1.5">
+												{profile.skills_offered.length > 0 ? (
+													profile.skills_offered.map((skill) => (
+														<Badge key={skill.skill_id} variant="secondary" className="text-xs">
+															{skill.name}
+														</Badge>
+													))
+												) : (
+													<p className="text-xs text-muted-foreground">None yet</p>
+												)}
+											</div>
+										</div>
+										<div>
+											<h4 className="text-sm font-medium mb-3 flex items-center justify-between">
+												<span>Looking for</span>
+												<span className="text-xs text-muted-foreground tabular-nums">
+													{profile.skills_wanted.length}
+												</span>
+											</h4>
+											<div className="flex flex-wrap gap-1.5">
+												{profile.skills_wanted.length > 0 ? (
+													profile.skills_wanted.map((skill) => (
+														<Badge key={skill.skill_id} variant="outline" className="text-xs">
+															{skill.name}
+														</Badge>
+													))
+												) : (
+													<p className="text-xs text-muted-foreground">None yet</p>
+												)}
+											</div>
+										</div>
+									</div>
+									<div className="mt-5 pt-4 border-t border-border">
+										<Link href="/profile?tab=skills">
+											<Button variant="ghost" size="sm" className="w-full justify-center text-xs">
+												Manage skills
+												<ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+											</Button>
+										</Link>
+									</div>
+								</CardContent>
+							</Card>
+						)}
 					</div>
 
 					{/* Right sidebar */}
@@ -362,26 +422,26 @@ export default function DashboardPage() {
 							<CardHeader>
 								<CardTitle>Quick Actions</CardTitle>
 							</CardHeader>
-							<CardContent className="space-y-3">
-								<Link href="/browse">
-									<Button className="w-full justify-start">
+							<CardContent className="space-y-2">
+								<Link href="/browse" className="block">
+									<Button variant="outline" className="w-full justify-start">
 										<Search className="w-4 h-4 mr-2" />
 										Find People
 									</Button>
 								</Link>
-								<Link href="/messages">
+								<Link href="/messages" className="block">
 									<Button variant="outline" className="w-full justify-start">
 										<MessageCircle className="w-4 h-4 mr-2" />
 										Messages
 									</Button>
 								</Link>
-								<Link href="/swaps">
+								<Link href="/swaps" className="block">
 									<Button variant="outline" className="w-full justify-start">
 										<ArrowRight className="w-4 h-4 mr-2" />
 										Manage Swaps
 									</Button>
 								</Link>
-								<Link href="/profile">
+								<Link href="/profile" className="block">
 									<Button variant="outline" className="w-full justify-start">
 										<Star className="w-4 h-4 mr-2" />
 										Update Skills
@@ -433,51 +493,6 @@ export default function DashboardPage() {
 								)}
 							</CardContent>
 						</Card>
-
-						{/* Your Skills */}
-						{profile && (
-							<Card>
-								<CardHeader>
-									<CardTitle>Your Skills</CardTitle>
-								</CardHeader>
-								<CardContent>
-									<div className="space-y-3">
-										<div>
-											<h4 className="text-sm font-medium mb-2">
-												Offering ({profile.skills_offered.length})
-											</h4>
-											<div className="flex flex-wrap gap-1">
-												{profile.skills_offered.length > 0 ? (
-													profile.skills_offered.map((skill) => (
-														<Badge key={skill.skill_id} variant="secondary" className="text-xs">
-															{skill.name}
-														</Badge>
-													))
-												) : (
-													<p className="text-xs text-muted-foreground">None yet</p>
-												)}
-											</div>
-										</div>
-										<div>
-											<h4 className="text-sm font-medium mb-2">
-												Looking for ({profile.skills_wanted.length})
-											</h4>
-											<div className="flex flex-wrap gap-1">
-												{profile.skills_wanted.length > 0 ? (
-													profile.skills_wanted.map((skill) => (
-														<Badge key={skill.skill_id} variant="outline" className="text-xs">
-															{skill.name}
-														</Badge>
-													))
-												) : (
-													<p className="text-xs text-muted-foreground">None yet</p>
-												)}
-											</div>
-										</div>
-									</div>
-								</CardContent>
-							</Card>
-						)}
 					</div>
 				</div>
 			</div>

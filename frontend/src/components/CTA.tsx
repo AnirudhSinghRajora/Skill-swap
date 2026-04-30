@@ -5,10 +5,15 @@ import { motion, useInView } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { ArrowUpRight } from 'lucide-react';
 import Link from 'next/link';
+import { useAuth } from '@/hooks/useAuth';
 
 const CallToActionSection = () => {
 	const ref = useRef(null);
 	const inView = useInView(ref, { once: true, amount: 0.2 });
+	const { isAuthenticated } = useAuth();
+
+	const ctaHref = isAuthenticated ? '/browse' : '/auth/signup';
+	const ctaLabel = isAuthenticated ? 'Find someone' : 'Find them';
 
 	return (
 		<section
@@ -64,17 +69,19 @@ const CallToActionSection = () => {
 				>
 					<div className="flex flex-wrap items-center gap-4">
 						<Button asChild variant="brand" size="lg">
-							<Link href="/auth/signup">
-								Find them
+							<Link href={ctaHref}>
+								{ctaLabel}
 								<ArrowUpRight className="ml-1 h-4 w-4" />
 							</Link>
 						</Button>
-						<Link
-							href="/auth/signin"
-							className="link-sweep text-sm text-background/70 hover:text-background"
-						>
-							Already a member? Sign in.
-						</Link>
+						{!isAuthenticated && (
+							<Link
+								href="/auth/signin"
+								className="link-sweep text-sm text-background/70 hover:text-background"
+							>
+								Already a member? Sign in.
+							</Link>
+						)}
 					</div>
 
 					<p className="font-serif text-sm italic text-background/55">

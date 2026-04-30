@@ -256,10 +256,11 @@ function ProfileContent() {
 
 	return (
 		<div className="min-h-screen bg-background">
-			<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+			<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Profile Header */}
-				<div className="bg-card rounded-lg p-6 mb-8">
-					<div className="flex flex-col md:flex-row items-start md:items-center space-y-4 md:space-y-0 md:space-x-6">
+				<Card className="mb-8 overflow-hidden">
+					<CardContent className="p-6 sm:p-8">
+						<div className="flex flex-col md:flex-row items-start md:items-center gap-6">
 						<div className="relative group">
 							<Avatar
 							src={profile.has_photo ? getPhotoUrl(profile.user_id) : undefined}
@@ -401,12 +402,13 @@ function ProfileContent() {
 								</div>
 							)}
 						</div>
-					</div>
-				</div>
+						</div>
+					</CardContent>
+				</Card>
 
 				{/* Tabs */}
 				<Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-					<TabsList className="grid w-full grid-cols-4">
+					<TabsList className="inline-flex w-full sm:w-auto">
 						<TabsTrigger value="overview">Overview</TabsTrigger>
 						<TabsTrigger value="skills">Skills</TabsTrigger>
 						<TabsTrigger value="swaps">Swap History</TabsTrigger>
