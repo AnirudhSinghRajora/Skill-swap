@@ -69,6 +69,9 @@ func JWTAuth(cfg config.Config, authConfig ...AuthConfig) gin.HandlerFunc {
 		if claims, ok := jwtToken.Claims.(jwt.MapClaims); ok && jwtToken.Valid {
 			c.Set("user_id", claims["user_id"])
 			c.Set("email", claims["email"])
+			if name, exists := claims["name"]; exists {
+				c.Set("user_name", name)
+			}
 
 			// Set admin flag if present
 			if isAdmin, exists := claims["is_admin"]; exists {
@@ -131,6 +134,9 @@ func OptionalAuth(cfg config.Config) gin.HandlerFunc {
 			if claims, ok := token.Claims.(jwt.MapClaims); ok {
 				c.Set("user_id", claims["user_id"])
 				c.Set("email", claims["email"])
+				if name, exists := claims["name"]; exists {
+					c.Set("user_name", name)
+				}
 				if isAdmin, exists := claims["is_admin"]; exists {
 					c.Set("is_admin", isAdmin)
 				}

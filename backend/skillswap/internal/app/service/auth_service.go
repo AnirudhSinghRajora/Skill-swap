@@ -8,8 +8,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/repository"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/config"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
 	"github.com/golang-jwt/jwt/v5"
@@ -116,6 +116,7 @@ type UserInfo struct {
 
 type TokenClaims struct {
 	UserID    uuid.UUID `json:"user_id"`
+	Name      string    `json:"name,omitempty"`
 	Email     string    `json:"email"`
 	IsAdmin   bool      `json:"is_admin"`
 	TokenType string    `json:"token_type"` // "access" or "refresh"
@@ -232,6 +233,7 @@ func (s *authService) generateAuthResponse(user *models.User) (*AuthResponse, er
 	// Generate access token
 	accessClaims := TokenClaims{
 		UserID:    user.UserID,
+		Name:      user.Name,
 		Email:     user.Email,
 		IsAdmin:   user.IsAdmin, // Use the user's actual admin status
 		TokenType: "access",
@@ -251,6 +253,7 @@ func (s *authService) generateAuthResponse(user *models.User) (*AuthResponse, er
 	// Generate refresh token
 	refreshClaims := TokenClaims{
 		UserID:    user.UserID,
+		Name:      user.Name,
 		Email:     user.Email,
 		IsAdmin:   user.IsAdmin, // Use the user's actual admin status
 		TokenType: "refresh",
@@ -412,6 +415,27 @@ func (s *authService) ResetPassword(token, newPassword string) error {
 	user.PasswordHash = string(hashedPassword)
 	if err := s.userRepo.Update(user); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	// Clear the E2EE key backup. It was encrypted with the OLD password
+	// (PBKDF2-derived AES-GCM) and is now undecryptable. Leaving it in
+	// place would cause the client to silently overwrite it on next
+	// login with a fresh key pair, but only after a confusing
+	// "decryption failed" fallback. Clearing it makes the next login
+	// deterministically generate fresh E2EE keys bound to the new
+	// password. (Old ciphertext in past conversations is unrecoverable
+	// — that's a fundamental property of password-derived key escrow.)
+	if err := s.db.Model(&models.User{}).
+		Where("user_id = ?", user.UserID).
+		Updates(map[string]any{
+			"public_key":           nil,
+			"encrypted_key_backup": nil,
+			"updated_at":           time.Now(),
+		}).Error; err != nil {
+		// Non-fatal: log via returned error path would mask the password
+		// reset success. The client's E2EE init will still work — it
+		// will just attempt decryption first, fail, then regenerate.
+		_ = err
 	}
 
 	// Mark token as used

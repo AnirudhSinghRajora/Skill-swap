@@ -6,8 +6,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	appservice "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/config"
 	resp "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/response"
 	"github.com/gin-gonic/gin"
