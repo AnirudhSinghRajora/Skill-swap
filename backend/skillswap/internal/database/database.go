@@ -727,6 +727,28 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		log.Println("✓ Added users.slug column + unique index")
 	}
 
+	// Migration 014: skill taxonomy + aliases (Commit 5)
+	if !db.Migrator().HasTable(&models.SkillCategory{}) {
+		if err := db.AutoMigrate(&models.SkillCategory{}); err != nil {
+			return err
+		}
+		log.Println("✓ Created skill_categories table")
+	}
+	if !db.Migrator().HasTable(&models.SkillAlias{}) {
+		if err := db.AutoMigrate(&models.SkillAlias{}); err != nil {
+			return err
+		}
+		// Case-insensitive uniqueness on alias_name (lower-cased)
+		_ = db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_aliases_lower ON skill_aliases (LOWER(alias_name))").Error
+		log.Println("✓ Created skill_aliases table")
+	}
+	if !db.Migrator().HasColumn(&models.Skill{}, "category_id") {
+		if err := db.Exec("ALTER TABLE skills ADD COLUMN category_id UUID REFERENCES skill_categories(category_id) ON DELETE SET NULL").Error; err != nil {
+			return err
+		}
+		log.Println("✓ Added skills.category_id")
+	}
+
 	return nil
 }
 

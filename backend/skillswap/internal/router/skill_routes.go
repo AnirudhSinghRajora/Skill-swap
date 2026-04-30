@@ -12,14 +12,17 @@ func SetupSkillRoutes(api *gin.RouterGroup, cfg *config.Config, skillHandler *sk
 	// Public skill routes (no authentication required)
 	skills := api.Group("/skills")
 	{
-		skills.GET("", skillHandler.GetAllSkills) // GET /api/v1/skills
-		skills.GET("/:id", skillHandler.GetSkill) // GET /api/v1/skills/:id
+		skills.GET("/categories", skillHandler.ListCategories) // must precede /:id
+		skills.GET("", skillHandler.GetAllSkills)              // GET /api/v1/skills
+		skills.GET("/:id", skillHandler.GetSkill)              // GET /api/v1/skills/:id
 	}
 
 	// Protected user skill routes (authentication required)
 	userSkills := api.Group("/users/skills")
 	userSkills.Use(middleware.JWTAuth(*cfg))
 	{
+		// Resolve a free-text name → canonical skill (creating if needed)
+		userSkills.POST("/resolve", skillHandler.ResolveSkill)
 		// Offered skills
 		userSkills.GET("/offered", skillHandler.GetUserOfferedSkills)      // GET /api/v1/users/skills/offered
 		userSkills.POST("/offered", skillHandler.AddOfferedSkill)          // POST /api/v1/users/skills/offered

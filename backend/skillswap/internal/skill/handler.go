@@ -514,3 +514,62 @@ func (h *Handler) GetUserWantedSkills(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
+
+// ResolveSkill — POST /api/v1/skills/resolve  body {name}
+// Returns the canonical skill (creating one if no exact/alias match).
+func (h *Handler) ResolveSkill(c *gin.Context) {
+	var req struct {
+		Name string `json:"name" binding:"required,min=2,max=100"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	skill, err := h.skillService.ResolveOrCreate(req.Name)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrValidation) {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+			return
+		}
+		resp.InternalError(c, err)
+		return
+	}
+	_ = uuid.Nil
+	c.JSON(http.StatusOK, SkillResponse{
+SkillID:   skill.SkillID.String(),
+		Name:      skill.Name,
+		CreatedAt: skill.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	})
+}
+
+// ListCategories — GET /api/v1/skills/categories (public)
+func (h *Handler) ListCategories(c *gin.Context) {
+	cats, err := h.skillService.ListCategories()
+	if err != nil {
+		resp.InternalError(c, err)
+		return
+	}
+	type categoryDTO struct {
+		CategoryID string  `json:"category_id"`
+		Name       string  `json:"name"`
+		Slug       string  `json:"slug"`
+		ParentID   *string `json:"parent_id"`
+		SortOrder  int     `json:"sort_order"`
+	}
+	out := make([]categoryDTO, 0, len(cats))
+	for _, c := range cats {
+		var parent *string
+		if c.ParentID != nil {
+			s := c.ParentID.String()
+			parent = &s
+		}
+		out = append(out, categoryDTO{
+CategoryID: c.CategoryID.String(),
+			Name:       c.Name,
+			Slug:       c.Slug,
+			ParentID:   parent,
+			SortOrder:  c.SortOrder,
+		})
+	}
+	c.JSON(http.StatusOK, out)
+}

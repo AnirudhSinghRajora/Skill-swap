@@ -19,6 +19,10 @@ type SkillService interface {
 	UpdateSkill(skillID uuid.UUID, name string) (*models.Skill, error)
 	DeleteSkill(skillID uuid.UUID) error
 
+	// Taxonomy & alias resolution
+	ResolveOrCreate(name string) (*models.Skill, error)
+	ListCategories() ([]models.SkillCategory, error)
+
 	// User skill management
 	AddOfferedSkill(userID, skillID uuid.UUID) error
 	RemoveOfferedSkill(userID, skillID uuid.UUID) error
@@ -237,4 +241,46 @@ func (s *skillService) GetUsersWithWantedSkill(skillID uuid.UUID) ([]models.User
 		Find(&users).Error
 
 	return users, err
+}
+
+// ResolveOrCreate resolves a free-text skill name to a canonical skill,
+// creating it if it does not exist. Lookup order: exact (case-insensitive)
+// → alias → create new.
+func (s *skillService) ResolveOrCreate(name string) (*models.Skill, error) {
+	trimmed := strings.TrimSpace(name)
+	if len(trimmed) < 2 || len(trimmed) > 100 {
+		return nil, fmt.Errorf("skill name must be 2-100 characters: %w", apperrors.ErrValidation)
+	}
+
+	// 1. Exact match (case-insensitive)
+	var skill models.Skill
+	if err := s.db.Where("LOWER(name) = LOWER(?)", trimmed).First(&skill).Error; err == nil {
+		return &skill, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	// 2. Alias lookup
+	var alias models.SkillAlias
+	if err := s.db.Where("LOWER(alias_name) = LOWER(?)", trimmed).First(&alias).Error; err == nil {
+		if err := s.db.First(&skill, "skill_id = ?", alias.CanonicalSkillID).Error; err == nil {
+			return &skill, nil
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	// 3. Create new skill (uncategorized)
+	created := &models.Skill{Name: trimmed}
+	if err := s.db.Create(created).Error; err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+// ListCategories returns all skill categories ordered by sort_order then name.
+func (s *skillService) ListCategories() ([]models.SkillCategory, error) {
+	var cats []models.SkillCategory
+	err := s.db.Order("sort_order ASC, name ASC").Find(&cats).Error
+	return cats, err
 }

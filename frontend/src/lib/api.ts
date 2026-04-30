@@ -370,6 +370,25 @@ export const skills = {
       method: 'DELETE',
     });
   },
+
+  resolve(name: string) {
+    return apiRequest<Skill>('/users/skills/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  listCategories() {
+    return apiRequest<
+      Array<{
+        category_id: string;
+        name: string;
+        slug: string;
+        parent_id: string | null;
+        sort_order: number;
+      }>
+    >('/skills/categories');
+  },
 };
 
 // ─── Swaps ───────────────────────────────────────────────────────────────────
