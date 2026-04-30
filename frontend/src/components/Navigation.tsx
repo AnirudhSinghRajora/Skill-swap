@@ -41,15 +41,18 @@ export function Navigation() {
 	if (isAuthPage) return null;
 
 	return (
-		<nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
-			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-				<div className="flex justify-between items-center h-14">
-					{/* Logo */}
-					<Link href="/" className="flex items-center gap-2.5">
-						<div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center">
-							<span className="text-primary-foreground font-bold text-xs">SS</span>
-						</div>
-						<span className="font-semibold text-foreground tracking-tight">SkillSwap</span>
+		<nav className="sticky top-0 z-50 bg-background/85 backdrop-blur-lg border-b border-foreground/10">
+			<div className="max-w-[1400px] mx-auto px-6 sm:px-10">
+				<div className="flex justify-between items-center h-16">
+					{/* Wordmark — editorial serif lockup */}
+					<Link href="/" className="group flex items-baseline gap-1">
+						<span className="font-serif text-2xl leading-none tracking-tight text-foreground">
+							Skill
+						</span>
+						<span className="font-serif text-2xl italic leading-none tracking-tight text-primary transition-transform duration-200 group-hover:translate-x-px">
+							swap
+						</span>
+						<span className="font-serif text-xl leading-none text-foreground/45">.</span>
 					</Link>
 
 					{/* Navigation Links */}
@@ -139,10 +142,10 @@ export function Navigation() {
 						) : (
 							<div className="flex items-center gap-2">
 								<Link href="/auth/signin">
-									<Button variant="ghost" size="sm" className="text-sm">Sign In</Button>
+									<Button variant="ghost" size="sm" className="text-sm">Sign in</Button>
 								</Link>
 								<Link href="/auth/signup">
-									<Button size="sm" className="text-sm">Sign Up</Button>
+									<Button variant="brand" size="sm" className="text-sm">Start a swap</Button>
 								</Link>
 							</div>
 						)}

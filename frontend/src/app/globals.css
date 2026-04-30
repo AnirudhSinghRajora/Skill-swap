@@ -3,50 +3,69 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ──────────────────────────────────────────────────────────────────────────
+   SkillSwap design tokens — warm editorial palette
+   Earth tones in OKLCH for perceptual uniformity.
+   Brand: terracotta (used sparingly, brand voice)
+   Trust: sage (secondary, organic surfaces)
+   Spark: amber (interactive accents only — focus rings, link underlines)
+   ────────────────────────────────────────────────────────────────────────── */
 :root {
-	--background: #fafafa;
-	--foreground: #09090b;
-	--card: #ffffff;
-	--card-foreground: #09090b;
-	--popover: #ffffff;
-	--popover-foreground: #09090b;
-	--primary: #4f46e5;
-	--primary-foreground: #ffffff;
-	--secondary: #f4f4f5;
-	--secondary-foreground: #18181b;
-	--muted: #f4f4f5;
-	--muted-foreground: #71717a;
-	--accent: #f4f4f5;
-	--accent-foreground: #18181b;
-	--destructive: #ef4444;
-	--destructive-foreground: #fafafa;
-	--border: #e4e4e7;
-	--input: #e4e4e7;
-	--ring: #4f46e5;
-	--success: #16a34a;
-	--success-foreground: #fafafa;
-	--chart-1: #4f46e5;
-	--chart-2: #06b6d4;
-	--chart-3: #8b5cf6;
-	--chart-4: #f59e0b;
-	--chart-5: #ec4899;
-	--sidebar: #fafafa;
-	--sidebar-foreground: #09090b;
-	--sidebar-primary: #4f46e5;
-	--sidebar-primary-foreground: #ffffff;
-	--sidebar-accent: #f4f4f5;
-	--sidebar-accent-foreground: #18181b;
-	--sidebar-border: #e4e4e7;
-	--sidebar-ring: #4f46e5;
-	--font-sans:
-		ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-		'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-		'Segoe UI Symbol', 'Noto Color Emoji';
-	--font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
-	--font-mono:
-		ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
-		monospace;
-	--radius: 0.625rem;
+	/* Paper & ink — warm-tinted neutrals (never pure gray) */
+	--background: oklch(0.985 0.009 80);          /* warm paper white */
+	--foreground: oklch(0.205 0.018 50);          /* warm ink */
+	--card: oklch(0.995 0.006 80);
+	--card-foreground: oklch(0.205 0.018 50);
+	--popover: oklch(0.995 0.006 80);
+	--popover-foreground: oklch(0.205 0.018 50);
+
+	/* Brand — terracotta */
+	--primary: oklch(0.595 0.155 36);
+	--primary-foreground: oklch(0.985 0.009 80);
+
+	/* Sage — secondary trust surface */
+	--secondary: oklch(0.945 0.018 130);
+	--secondary-foreground: oklch(0.32 0.04 145);
+
+	/* Muted surfaces — warm beige, not gray */
+	--muted: oklch(0.955 0.012 75);
+	--muted-foreground: oklch(0.49 0.02 60);
+
+	/* Accent — amber, reserved for interactive states */
+	--accent: oklch(0.78 0.155 75);
+	--accent-foreground: oklch(0.205 0.018 50);
+
+	--destructive: oklch(0.58 0.18 25);
+	--destructive-foreground: oklch(0.985 0.009 80);
+
+	--border: oklch(0.905 0.014 70);
+	--input: oklch(0.905 0.014 70);
+	--ring: oklch(0.78 0.155 75);                 /* amber focus rings */
+	--success: oklch(0.62 0.12 145);
+	--success-foreground: oklch(0.985 0.009 80);
+
+	/* Brand-tinted chart palette */
+	--chart-1: oklch(0.595 0.155 36);
+	--chart-2: oklch(0.66 0.09 145);
+	--chart-3: oklch(0.78 0.155 75);
+	--chart-4: oklch(0.45 0.05 60);
+	--chart-5: oklch(0.72 0.12 30);
+
+	--sidebar: oklch(0.985 0.009 80);
+	--sidebar-foreground: oklch(0.205 0.018 50);
+	--sidebar-primary: oklch(0.595 0.155 36);
+	--sidebar-primary-foreground: oklch(0.985 0.009 80);
+	--sidebar-accent: oklch(0.955 0.012 75);
+	--sidebar-accent-foreground: oklch(0.205 0.018 50);
+	--sidebar-border: oklch(0.905 0.014 70);
+	--sidebar-ring: oklch(0.78 0.155 75);
+
+	/* Editorial typography stack */
+	--font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+	--font-serif: var(--font-instrument-serif), 'Instrument Serif', ui-serif, Georgia, Cambria, serif;
+	--font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+	--radius: 0.5rem;
 	--shadow-2xs: 0 1px 2px 0 rgb(0 0 0 / 0.03);
 	--shadow-xs: 0 1px 3px 0 rgb(0 0 0 / 0.04);
 	--shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05), 0 1px 3px -1px rgb(0 0 0 / 0.06);
@@ -59,41 +78,50 @@
 	--spacing: 0.25rem;
 }
 
+/* Dark mode = warm candlelight, not cold void */
 .dark {
-	--background: #09090b;
-	--foreground: #fafafa;
-	--card: #111113;
-	--card-foreground: #fafafa;
-	--popover: #111113;
-	--popover-foreground: #fafafa;
-	--primary: #818cf8;
-	--primary-foreground: #09090b;
-	--secondary: #1c1c1f;
-	--secondary-foreground: #fafafa;
-	--muted: #18181b;
-	--muted-foreground: #a1a1aa;
-	--accent: #1c1c1f;
-	--accent-foreground: #fafafa;
-	--destructive: #ef4444;
-	--destructive-foreground: #fafafa;
-	--border: #27272a;
-	--input: #27272a;
-	--ring: #818cf8;
-	--success: #22c55e;
-	--success-foreground: #09090b;
-	--chart-1: #818cf8;
-	--chart-2: #22d3ee;
-	--chart-3: #a78bfa;
-	--chart-4: #fbbf24;
-	--chart-5: #f472b6;
-	--sidebar: #0a0a0c;
-	--sidebar-foreground: #fafafa;
-	--sidebar-primary: #818cf8;
-	--sidebar-primary-foreground: #09090b;
-	--sidebar-accent: #18181b;
-	--sidebar-accent-foreground: #fafafa;
-	--sidebar-border: #27272a;
-	--sidebar-ring: #818cf8;
+	--background: oklch(0.165 0.012 55);          /* warm charcoal */
+	--foreground: oklch(0.945 0.014 80);
+	--card: oklch(0.205 0.013 55);
+	--card-foreground: oklch(0.945 0.014 80);
+	--popover: oklch(0.205 0.013 55);
+	--popover-foreground: oklch(0.945 0.014 80);
+
+	--primary: oklch(0.72 0.135 38);              /* lifted terracotta for dark */
+	--primary-foreground: oklch(0.16 0.012 55);
+
+	--secondary: oklch(0.27 0.018 130);
+	--secondary-foreground: oklch(0.92 0.02 130);
+
+	--muted: oklch(0.235 0.012 60);
+	--muted-foreground: oklch(0.68 0.014 70);
+
+	--accent: oklch(0.78 0.155 75);
+	--accent-foreground: oklch(0.16 0.012 55);
+
+	--destructive: oklch(0.65 0.16 25);
+	--destructive-foreground: oklch(0.945 0.014 80);
+
+	--border: oklch(0.28 0.014 60);
+	--input: oklch(0.28 0.014 60);
+	--ring: oklch(0.78 0.155 75);
+	--success: oklch(0.7 0.12 145);
+	--success-foreground: oklch(0.16 0.012 55);
+
+	--chart-1: oklch(0.72 0.135 38);
+	--chart-2: oklch(0.74 0.09 145);
+	--chart-3: oklch(0.82 0.14 75);
+	--chart-4: oklch(0.6 0.04 60);
+	--chart-5: oklch(0.78 0.12 30);
+
+	--sidebar: oklch(0.155 0.012 55);
+	--sidebar-foreground: oklch(0.945 0.014 80);
+	--sidebar-primary: oklch(0.72 0.135 38);
+	--sidebar-primary-foreground: oklch(0.16 0.012 55);
+	--sidebar-accent: oklch(0.235 0.012 60);
+	--sidebar-accent-foreground: oklch(0.945 0.014 80);
+	--sidebar-border: oklch(0.28 0.014 60);
+	--sidebar-ring: oklch(0.78 0.155 75);
 	--shadow-2xs: 0 1px 2px 0 rgb(0 0 0 / 0.2);
 	--shadow-xs: 0 1px 3px 0 rgb(0 0 0 / 0.3);
 	--shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3), 0 1px 3px -1px rgb(0 0 0 / 0.25);
@@ -172,31 +200,100 @@
 }
 
 @layer utilities {
-	/* Fluid display typography — clean geometric scale */
+	/* Editorial display scale — serif, magazine-grade */
 	.text-display-xl {
-		font-size: clamp(3rem, 2.2rem + 4vw, 5rem);
-		line-height: 1.05;
-		letter-spacing: -0.035em;
-		font-weight: 700;
+		font-family: var(--font-serif);
+		font-size: clamp(3.5rem, 2rem + 9vw, 9rem);
+		line-height: 0.95;
+		letter-spacing: -0.025em;
+		font-weight: 400;
 	}
 	.text-display-lg {
-		font-size: clamp(2.25rem, 1.7rem + 2.75vw, 3.5rem);
-		line-height: 1.1;
-		letter-spacing: -0.03em;
-		font-weight: 700;
+		font-family: var(--font-serif);
+		font-size: clamp(2.75rem, 2rem + 4vw, 5rem);
+		line-height: 1;
+		letter-spacing: -0.02em;
+		font-weight: 400;
 	}
 	.text-display-md {
-		font-size: clamp(1.75rem, 1.4rem + 1.75vw, 2.5rem);
-		line-height: 1.15;
-		letter-spacing: -0.025em;
-		font-weight: 600;
+		font-family: var(--font-serif);
+		font-size: clamp(2rem, 1.5rem + 2.25vw, 3rem);
+		line-height: 1.05;
+		letter-spacing: -0.015em;
+		font-weight: 400;
 	}
 	.text-display-sm {
-		font-size: clamp(1.35rem, 1.1rem + 1.25vw, 1.75rem);
-		line-height: 1.2;
-		letter-spacing: -0.02em;
-		font-weight: 600;
+		font-family: var(--font-serif);
+		font-size: clamp(1.5rem, 1.2rem + 1.5vw, 2rem);
+		line-height: 1.15;
+		letter-spacing: -0.01em;
+		font-weight: 400;
 	}
+	.font-serif { font-family: var(--font-serif); }
+	.font-sans  { font-family: var(--font-sans); }
+
+	/* Eyebrow — small caps editorial labels */
+	.eyebrow {
+		font-family: var(--font-sans);
+		font-size: 0.72rem;
+		font-weight: 500;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: var(--muted-foreground);
+	}
+
+	/* Folio — magazine-style numerals */
+	.folio {
+		font-family: var(--font-serif);
+		font-style: italic;
+		font-size: clamp(2.5rem, 1.8rem + 3vw, 4rem);
+		line-height: 1;
+		color: color-mix(in oklab, var(--primary) 55%, transparent);
+	}
+
+	/* Underline that sweeps in with hover (amber accent) */
+	.link-sweep {
+		background-image: linear-gradient(currentColor, currentColor);
+		background-position: 0 100%;
+		background-repeat: no-repeat;
+		background-size: 0% 1px;
+		transition: background-size 280ms cubic-bezier(0.22, 1, 0.36, 1);
+		padding-bottom: 0.05em;
+	}
+	.link-sweep:hover { background-size: 100% 1px; }
+
+	/* Marquee — wire-ticker */
+	.marquee {
+		--marquee-duration: 48s;
+		display: flex;
+		overflow: hidden;
+		mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+	}
+	.marquee__track {
+		display: flex;
+		flex-shrink: 0;
+		min-width: 100%;
+		animation: marquee var(--marquee-duration) linear infinite;
+	}
+	.marquee:hover .marquee__track { animation-play-state: paused; }
+	@keyframes marquee {
+		from { transform: translate3d(0, 0, 0); }
+		to   { transform: translate3d(-100%, 0, 0); }
+	}
+
+	/* Drop cap for editorial paragraphs */
+	.drop-cap::first-letter {
+		font-family: var(--font-serif);
+		float: left;
+		font-size: 4.5em;
+		line-height: 0.85;
+		padding: 0.08em 0.08em 0 0;
+		font-weight: 400;
+		color: var(--primary);
+	}
+
+	/* Ruled section divider */
+	.rule { border-color: color-mix(in oklab, var(--foreground) 14%, transparent); }
 }
 
 /* ── Page entrance animations ─────────────────────────────────────────────── */
@@ -230,8 +327,24 @@
 }
 
 @keyframes badge-pulse {
-	0%, 100% { box-shadow: 0 0 0 0 rgb(239 68 68 / 0.5); }
-	50% { box-shadow: 0 0 0 4px rgb(239 68 68 / 0); }
+	0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--destructive) 50%, transparent); }
+	50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--destructive) 0%, transparent); }
+}
+
+/* Hand-drawn arrow stroke — used in hero "swap" moment */
+@keyframes draw-stroke {
+	from { stroke-dashoffset: var(--draw-length, 600); }
+	to   { stroke-dashoffset: 0; }
+}
+.animate-draw {
+	stroke-dasharray: var(--draw-length, 600);
+	stroke-dashoffset: var(--draw-length, 600);
+	animation: draw-stroke 1.6s cubic-bezier(0.22, 1, 0.36, 1) 0.3s forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.animate-draw { animation: none; stroke-dashoffset: 0; }
+	.marquee__track { animation: none; }
 }
 
 /* Staggered children entrance — add to a parent to cascade its direct children */

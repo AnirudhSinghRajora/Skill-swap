@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Geist, Geist_Mono, Instrument_Serif } from 'next/font/google';
 import { QueryClientProvider } from '@/providers/QueryClientProvider';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { Navigation } from '@/components/Navigation';
@@ -17,9 +17,18 @@ const geistMono = Geist_Mono({
 	subsets: ['latin']
 });
 
+const instrumentSerif = Instrument_Serif({
+	variable: '--font-instrument-serif',
+	subsets: ['latin'],
+	weight: '400',
+	style: ['normal', 'italic'],
+	display: 'swap'
+});
+
 export const metadata: Metadata = {
-	title: 'SkillSwap - Exchange Skills with Others',
-	description: 'Connect with people in your area to exchange skills and knowledge'
+	title: 'SkillSwap — Trade what you know for what you want to learn',
+	description:
+		'A peer-to-peer skill exchange for curious people. Teach what you love, learn what you need. No fees, no middlemen — just trade.'
 };
 
 export default function RootLayout({
@@ -30,7 +39,7 @@ export default function RootLayout({
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<body
-				className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background`}
+				className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} antialiased bg-background font-sans`}
 			>
 				<ThemeProvider>
 					<SmoothScroll />
