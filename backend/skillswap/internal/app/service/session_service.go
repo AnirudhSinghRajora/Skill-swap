@@ -24,6 +24,7 @@ type SessionService interface {
 	Accept(sessionID, userID uuid.UUID) (*models.Session, error)
 	Cancel(sessionID, userID uuid.UUID) (*models.Session, error)
 	Complete(sessionID, userID uuid.UUID) (*models.Session, error)
+	UpdateNotes(sessionID, userID uuid.UUID, body string, ifMatch *time.Time) (*models.Session, error)
 }
 
 type sessionService struct {
@@ -158,5 +159,35 @@ func (s *sessionService) Complete(sessionID, userID uuid.UUID) (*models.Session,
 		return nil, err
 	}
 	sess.Status = models.SessionCompleted
+	return sess, nil
+}
+
+// UpdateNotes overwrites the prep notes body. If ifMatch is non-nil it must
+// equal the row's current updated_at (truncated to microseconds — Postgres'
+// timestamptz precision); otherwise ErrConflict is returned so the caller
+// can refresh and retry.
+func (s *sessionService) UpdateNotes(sessionID, userID uuid.UUID, body string, ifMatch *time.Time) (*models.Session, error) {
+	sess, _, err := s.loadAndAuthorize(sessionID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if ifMatch != nil {
+		// Compare at microsecond resolution (Postgres timestamptz). Allow
+		// any drift smaller than 1ms, which can happen across driver round-trips.
+		diff := sess.UpdatedAt.Sub(*ifMatch)
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > time.Millisecond {
+			return nil, fmt.Errorf("notes changed since last load: %w", apperrors.ErrConflict)
+		}
+	}
+	if err := s.db.Model(sess).Update("prep_notes", body).Error; err != nil {
+		return nil, err
+	}
+	// Reload to capture refreshed UpdatedAt.
+	if err := s.db.Where("session_id = ?", sessionID).First(sess).Error; err != nil {
+		return nil, err
+	}
 	return sess, nil
 }

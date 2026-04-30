@@ -938,7 +938,14 @@ export interface SessionResponse {
   status: SessionStatus;
   livekit_room_name?: string | null;
   reminder_sent_at?: string | null;
+  prep_notes?: string | null;
   created_at: string;
+  updated_at: string;
+}
+
+export interface SessionNotesPayload {
+  session_id: string;
+  prep_notes: string;
   updated_at: string;
 }
 
@@ -998,6 +1005,28 @@ export const sessions = {
       body: opts?.body ?? `Swap ${s.swap_id}`,
     });
     return `https://outlook.live.com/calendar/0/deeplink/compose?${params.toString()}`;
+  },
+  getNotes(sessionId: string) {
+    return apiRequest<SessionNotesPayload>(
+      `/sessions/${encodeURIComponent(sessionId)}/notes`,
+    );
+  },
+  /**
+   * Update prep notes. Pass `ifMatch` (the previous `updated_at`) to enable
+   * optimistic concurrency — the request returns 409 if someone else saved
+   * a newer revision in the meantime.
+   */
+  updateNotes(sessionId: string, prep_notes: string, ifMatch?: string) {
+    const headers: Record<string, string> = {};
+    if (ifMatch) headers['If-Match'] = ifMatch;
+    return apiRequest<SessionNotesPayload>(
+      `/sessions/${encodeURIComponent(sessionId)}/notes`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ prep_notes }),
+        headers,
+      },
+    );
   },
 };
 

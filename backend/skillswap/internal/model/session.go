@@ -31,6 +31,7 @@ type Session struct {
 	Status           SessionStatus  `gorm:"column:status;type:varchar(16);not null;default:'proposed'"`
 	LiveKitRoomName  *string        `gorm:"column:livekit_room_name;type:varchar(64)"`
 	ReminderSentAt   *time.Time     `gorm:"column:reminder_sent_at"`
+	PrepNotes        *string        `gorm:"column:prep_notes;type:text"`
 	CreatedAt        time.Time      `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt        time.Time      `gorm:"column:updated_at;autoUpdateTime"`
 	DeletedAt        gorm.DeletedAt `gorm:"column:deleted_at;index"`

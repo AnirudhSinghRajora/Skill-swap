@@ -793,6 +793,14 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		log.Println("✓ Created sessions table")
 	}
 
+	// Migration 019: sessions.prep_notes (Commit 13)
+	if db.Migrator().HasTable(&models.Session{}) && !db.Migrator().HasColumn(&models.Session{}, "prep_notes") {
+		if err := db.Exec("ALTER TABLE sessions ADD COLUMN prep_notes TEXT").Error; err != nil {
+			return err
+		}
+		log.Println("✓ Added sessions.prep_notes")
+	}
+
 	return nil
 }
 

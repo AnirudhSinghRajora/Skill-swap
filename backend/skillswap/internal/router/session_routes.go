@@ -25,5 +25,7 @@ func SetupSessionRoutes(api *gin.RouterGroup, cfg *config.Config, h *session.Han
 		sessions.PUT("/:id/cancel", h.Cancel)         // PUT /api/v1/sessions/:id/cancel
 		sessions.PUT("/:id/complete", h.Complete)     // PUT /api/v1/sessions/:id/complete
 		sessions.GET("/:id/calendar.ics", h.ICS)      // GET /api/v1/sessions/:id/calendar.ics
+		sessions.GET("/:id/notes", h.GetNotes)        // GET /api/v1/sessions/:id/notes
+		sessions.PUT("/:id/notes", h.UpdateNotes)     // PUT /api/v1/sessions/:id/notes
 	}
 }

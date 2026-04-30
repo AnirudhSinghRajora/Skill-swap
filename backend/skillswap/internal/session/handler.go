@@ -48,6 +48,8 @@ func (h *Handler) writeErr(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, apperrors.ErrNotParticipant), errors.Is(err, apperrors.ErrForbidden):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+	case errors.Is(err, apperrors.ErrConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "conflict"})
 	case errors.Is(err, apperrors.ErrValidation),
 		errors.Is(err, apperrors.ErrWrongStatus),
 		errors.Is(err, apperrors.ErrSelfAction):
@@ -153,6 +155,86 @@ func (h *Handler) ICS(c *gin.Context) {
 	c.Header("Content-Type", "text/calendar; charset=utf-8")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"skillswap-session-%s.ics\"", sess.SessionID.String()))
 	c.String(http.StatusOK, body)
+}
+
+type notesPayload struct {
+	SessionID  uuid.UUID `json:"session_id"`
+	PrepNotes  string    `json:"prep_notes"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+func notesPayloadOf(s *models.Session) notesPayload {
+	body := ""
+	if s.PrepNotes != nil {
+		body = *s.PrepNotes
+	}
+	return notesPayload{SessionID: s.SessionID, PrepNotes: body, UpdatedAt: s.UpdatedAt}
+}
+
+// GET /api/v1/sessions/:id/notes
+func (h *Handler) GetNotes(c *gin.Context) {
+	user, ok := parseUser(c)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		return
+	}
+	sess, err := h.svc.Get(id, user)
+	if err != nil {
+		h.writeErr(c, err)
+		return
+	}
+	c.Header("ETag", sess.UpdatedAt.UTC().Format(time.RFC3339Nano))
+	c.JSON(http.StatusOK, notesPayloadOf(sess))
+}
+
+type updateNotesRequest struct {
+	PrepNotes string `json:"prep_notes"`
+}
+
+// PUT /api/v1/sessions/:id/notes
+//
+// Optimistic concurrency: If-Match header carries the previous updated_at
+// value (RFC 3339, as returned by GET). When supplied and stale, returns
+// 409 with code=conflict so the client can refresh.
+func (h *Handler) UpdateNotes(c *gin.Context) {
+	user, ok := parseUser(c)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		return
+	}
+	var req updateNotesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(req.PrepNotes) > 16384 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "prep_notes exceeds 16KB"})
+		return
+	}
+	var ifMatch *time.Time
+	if hdr := strings.TrimSpace(c.GetHeader("If-Match")); hdr != "" {
+		t, perr := time.Parse(time.RFC3339Nano, hdr)
+		if perr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "If-Match must be RFC3339Nano"})
+			return
+		}
+		ifMatch = &t
+	}
+	sess, err := h.svc.UpdateNotes(id, user, req.PrepNotes, ifMatch)
+	if err != nil {
+		h.writeErr(c, err)
+		return
+	}
+	c.Header("ETag", sess.UpdatedAt.UTC().Format(time.RFC3339Nano))
+	c.JSON(http.StatusOK, notesPayloadOf(sess))
 }
 
 // icsEscape escapes commas, semicolons, backslashes and newlines per RFC 5545.
