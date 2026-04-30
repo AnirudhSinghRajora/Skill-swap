@@ -5,7 +5,7 @@
  * `useEnsureE2EE` hook reports it is incomplete.
  *
  * It is mounted once in the root layout but only appears on chat-bearing
- * routes (currently `/messages*` and `/swaps/*/chat`). For every other
+ * routes (currently /messages and /swaps). For every other
  * route it stays out of the way so the rest of the app — browse, profile,
  * onboarding — remains usable even without keys.
  *
