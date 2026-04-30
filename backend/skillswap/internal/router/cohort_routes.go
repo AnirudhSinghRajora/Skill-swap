@@ -27,4 +27,10 @@ func SetupCohortRoutes(api *gin.RouterGroup, cfg *config.Config, h *cohort.Handl
 		auth.POST("/:id/sessions", h.AddSession)
 		auth.DELETE("/:id/members/:user_id", h.RemoveMember)
 	}
+
+	csAuth := api.Group("/cohort-sessions")
+	csAuth.Use(middleware.JWTAuth(*cfg))
+	{
+		csAuth.POST("/:id/token", h.JoinToken) // POST /api/v1/cohort-sessions/:id/token
+	}
 }

@@ -27,6 +27,11 @@ type CohortService interface {
 	AddSession(cohortID, hostID uuid.UUID, start, end time.Time) (*models.CohortSession, error)
 	ListSessions(cohortID uuid.UUID) ([]models.CohortSession, error)
 	RemoveMember(cohortID, hostID, memberID uuid.UUID) error
+	// AuthorizeJoin returns the cohort + cohort_session if the viewer is
+	// allowed to join the LiveKit room for that session right now.
+	// For kind=cohort, viewer must be a member; for kind=room, anyone may
+	// join during the time window. The window is [start-15min, end+15min].
+	AuthorizeJoin(cohortSessionID, viewerID uuid.UUID) (*models.Cohort, *models.CohortSession, error)
 }
 
 type CreateCohortInput struct {
@@ -304,4 +309,36 @@ func (s *cohortService) RemoveMember(cohortID, hostID, memberID uuid.UUID) error
 		return fmt.Errorf("not a member: %w", apperrors.ErrNotFound)
 	}
 	return nil
+}
+
+// AuthorizeJoin enforces the time window + kind-specific membership rules.
+func (s *cohortService) AuthorizeJoin(cohortSessionID, viewerID uuid.UUID) (*models.Cohort, *models.CohortSession, error) {
+	var cs models.CohortSession
+	if err := s.db.Where("cohort_session_id = ?", cohortSessionID).First(&cs).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, fmt.Errorf("cohort session %w", apperrors.ErrNotFound)
+		}
+		return nil, nil, err
+	}
+	now := time.Now()
+	open := cs.ScheduledStart.Add(-15 * time.Minute)
+	close := cs.ScheduledEnd.Add(15 * time.Minute)
+	if now.Before(open) || now.After(close) {
+		return nil, nil, fmt.Errorf("session not within join window: %w", apperrors.ErrWrongStatus)
+	}
+	var c models.Cohort
+	if err := s.db.Where("cohort_id = ?", cs.CohortID).First(&c).Error; err != nil {
+		return nil, nil, err
+	}
+	if c.Kind == models.CohortKindCohort {
+		var m models.CohortMember
+		if err := s.db.Where("cohort_id = ? AND user_id = ?", c.CohortID, viewerID).First(&m).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, nil, fmt.Errorf("not a member: %w", apperrors.ErrForbidden)
+			}
+			return nil, nil, err
+		}
+	}
+	// Rooms (kind=room) are open to any authenticated user during the window.
+	return &c, &cs, nil
 }

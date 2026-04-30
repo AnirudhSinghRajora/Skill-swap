@@ -42,6 +42,9 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	sessionService := service.NewSessionService(db)
 	cohortService := service.NewCohortService(db)
 
+	// Video call service (shared by video + cohort handlers)
+	videoService := service.NewVideoService(*cfg)
+
 	// Initialize handlers
 	skillHandler := skill.NewHandler(skillService)
 	swapHandler := swap.NewHandler(swapService)
@@ -51,10 +54,7 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	chatHandler := chat.NewHandler(chatService)
 	moderationHandler := moderation.NewHandler(moderationService)
 	sessionHandler := session.NewHandler(sessionService)
-	cohortHandler := cohort.NewHandler(cohortService)
-
-	// Video call service
-	videoService := service.NewVideoService(*cfg)
+	cohortHandler := cohort.NewHandler(cohortService, videoService)
 	videoHandler := video.NewHandler(videoService)
 
 	// WebSocket hub — singleton for the lifetime of the application.

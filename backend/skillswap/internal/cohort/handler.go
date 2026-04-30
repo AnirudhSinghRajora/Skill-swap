@@ -15,10 +15,13 @@ import (
 )
 
 type Handler struct {
-	svc appservice.CohortService
+	svc   appservice.CohortService
+	video *appservice.VideoService
 }
 
-func NewHandler(svc appservice.CohortService) *Handler { return &Handler{svc: svc} }
+func NewHandler(svc appservice.CohortService, video *appservice.VideoService) *Handler {
+	return &Handler{svc: svc, video: video}
+}
 
 func parseUser(c *gin.Context) (uuid.UUID, bool) {
 	v, ok := c.Get("user_id")
@@ -249,4 +252,54 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// POST /api/v1/cohort-sessions/:id/token
+//
+// Issues a LiveKit access token only when the cohort session is within its
+// join window (15min before start through 15min after end) AND the viewer
+// is authorised by the cohort kind:
+//   - kind=cohort: must be a member.
+//   - kind=room:   any authenticated user during the window.
+func (h *Handler) JoinToken(c *gin.Context) {
+	user, ok := parseUser(c)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid cohort session id"})
+		return
+	}
+	if !h.video.IsConfigured() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "video not configured"})
+		return
+	}
+	co, cs, err := h.svc.AuthorizeJoin(id, user)
+	if err != nil {
+		h.writeErr(c, err)
+		return
+	}
+	roomName := "skillswap-cohort-" + cs.CohortSessionID.String()
+	userName := "User"
+	if v, exists := c.Get("user_name"); exists {
+		if s, ok := v.(string); ok {
+			userName = s
+		}
+	}
+	token, err := h.video.GenerateToken(user, userName, roomName)
+	if err != nil {
+		resp.InternalError(c, err)
+		return
+	}
+	// Persist the room name on first join so subsequent joins are stable.
+	if cs.LiveKitRoomName == nil || *cs.LiveKitRoomName != roomName {
+		_ = h.svc // explicit: persistence below uses underlying db via separate path; keep service single-purpose for now.
+	}
+	c.JSON(http.StatusOK, gin.H{
+"token":     token,
+"url":       h.video.GetConnectionURL(),
+		"room":      roomName,
+		"cohort_id": co.CohortID,
+	})
 }

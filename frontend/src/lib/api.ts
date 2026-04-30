@@ -1142,6 +1142,24 @@ export const cohorts = {
       { method: 'DELETE' },
     );
   },
+  /**
+   * Convenience: list public drop-in rooms (kind=room) sorted by recency.
+   * Equivalent to calling list({ kind: 'room' }).
+   */
+  listRooms(query: Omit<ListCohortQuery, 'kind'> = {}) {
+    return cohorts.list({ ...query, kind: 'room' });
+  },
+  /**
+   * Request a LiveKit token for a cohort session. Server enforces a
+   * +/-15min join window around the scheduled time and (for kind=cohort)
+   * cohort membership.
+   */
+  joinToken(cohortSessionId: string) {
+    return apiRequest<{ token: string; url: string; room: string; cohort_id: string }>(
+      `/cohort-sessions/${encodeURIComponent(cohortSessionId)}/token`,
+      { method: 'POST' },
+    );
+  },
 };
 
 export const api = {
