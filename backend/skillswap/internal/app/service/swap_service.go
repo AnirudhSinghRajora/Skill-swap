@@ -374,65 +374,116 @@ func (s *swapService) GetSwapHistory(userID uuid.UUID) ([]models.SwapRequest, er
 	return swapRequests, err
 }
 
-// FindPotentialMatches finds potential swap matches for a user
+// FindPotentialMatches finds potential swap matches for a user using a
+// bidirectional score computed entirely in SQL.
+//
+// Score formula (per candidate user u, vs viewer v):
+//   forward = COUNT(skills v offers AND u wants)
+//   reverse = COUNT(skills u offers AND v wants)
+//   raw     = forward + reverse + 2 * LEAST(forward, reverse)
+//   penalty = SUM(|level_v - level_u|) over the matched offered/wanted pairs (capped)
+//   recency = exp(-days_since_active / 30)            -- users.updated_at proxy
+//   score   = GREATEST(0, (raw - penalty)) * recency
+//
+// One row is returned per (candidate, representative offered skill, representative
+// wanted skill); the representative pair is the one with the smallest level gap.
 func (s *swapService) FindPotentialMatches(userID uuid.UUID) ([]SwapMatch, error) {
-	var matches []SwapMatch
+	type row struct {
+		UserID         uuid.UUID `gorm:"column:user_id"`
+		Name           string    `gorm:"column:name"`
+		Email          string    `gorm:"column:email"`
+		Location       *string   `gorm:"column:location"`
+		IsPublic       bool      `gorm:"column:is_public"`
+		UpdatedAt      time.Time `gorm:"column:updated_at"`
+		OfferedSkillID uuid.UUID `gorm:"column:offered_skill_id"`
+		OfferedName    string    `gorm:"column:offered_name"`
+		WantedSkillID  uuid.UUID `gorm:"column:wanted_skill_id"`
+		WantedName     string    `gorm:"column:wanted_name"`
+		Score          float64   `gorm:"column:score"`
+	}
 
-	// Get user's offered skills
-	var userOfferedSkills []models.Skill
-	err := s.db.Table("skills").
-		Joins("JOIN user_skills_offered ON skills.skill_id = user_skills_offered.skill_id").
-		Where("user_skills_offered.user_id = ?", userID).
-		Find(&userOfferedSkills).Error
-	if err != nil {
+	const q = `
+WITH
+viewer_offered AS (
+    SELECT skill_id, level FROM user_skills_offered WHERE user_id = ?
+),
+viewer_wanted AS (
+    SELECT skill_id, level FROM user_skills_wanted WHERE user_id = ?
+),
+-- forward: viewer offers skill that candidate wants
+fwd AS (
+    SELECT uw.user_id AS cand_id,
+           uw.skill_id AS skill_id,
+           ABS(COALESCE(vo.level,2) - COALESCE(uw.level,2)) AS gap
+    FROM user_skills_wanted uw
+    JOIN viewer_offered vo ON vo.skill_id = uw.skill_id
+    WHERE uw.user_id <> ?
+),
+-- reverse: candidate offers skill that viewer wants
+rev AS (
+    SELECT uo.user_id AS cand_id,
+           uo.skill_id AS skill_id,
+           ABS(COALESCE(vw.level,2) - COALESCE(uo.level,2)) AS gap
+    FROM user_skills_offered uo
+    JOIN viewer_wanted vw ON vw.skill_id = uo.skill_id
+    WHERE uo.user_id <> ?
+),
+agg AS (
+    SELECT
+        c.cand_id,
+        (SELECT COUNT(*) FROM fwd f WHERE f.cand_id = c.cand_id) AS fwd_cnt,
+        (SELECT COUNT(*) FROM rev r WHERE r.cand_id = c.cand_id) AS rev_cnt,
+        COALESCE((SELECT SUM(gap) FROM fwd f WHERE f.cand_id = c.cand_id),0)
+        + COALESCE((SELECT SUM(gap) FROM rev r WHERE r.cand_id = c.cand_id),0) AS total_gap
+    FROM (SELECT DISTINCT cand_id FROM (SELECT cand_id FROM fwd UNION ALL SELECT cand_id FROM rev) u) c
+),
+rep_fwd AS (
+    SELECT DISTINCT ON (cand_id) cand_id, skill_id FROM fwd ORDER BY cand_id, gap ASC
+),
+rep_rev AS (
+    SELECT DISTINCT ON (cand_id) cand_id, skill_id FROM rev ORDER BY cand_id, gap ASC
+)
+SELECT
+    u.user_id, u.name, u.email, u.location, u.is_public, u.updated_at,
+    rf.skill_id AS offered_skill_id, so.name AS offered_name,
+    rr.skill_id AS wanted_skill_id,  sw.name AS wanted_name,
+    GREATEST(
+      0::float8,
+      (a.fwd_cnt + a.rev_cnt + 2 * LEAST(a.fwd_cnt, a.rev_cnt) - LEAST(a.total_gap, a.fwd_cnt + a.rev_cnt))::float8
+    ) * EXP(-EXTRACT(EPOCH FROM (NOW() - u.updated_at)) / (60.0*60.0*24.0*30.0)) AS score
+FROM agg a
+JOIN users u ON u.user_id = a.cand_id
+LEFT JOIN rep_fwd rf ON rf.cand_id = a.cand_id
+LEFT JOIN rep_rev rr ON rr.cand_id = a.cand_id
+LEFT JOIN skills so ON so.skill_id = rf.skill_id
+LEFT JOIN skills sw ON sw.skill_id = rr.skill_id
+WHERE u.is_public = TRUE AND u.deleted_at IS NULL
+  AND a.fwd_cnt > 0 AND a.rev_cnt > 0
+ORDER BY score DESC
+LIMIT 20
+`
+
+	var rows []row
+	if err := s.db.Raw(q, userID, userID, userID, userID).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 
-	// Get user's wanted skills
-	var userWantedSkills []models.Skill
-	err = s.db.Table("skills").
-		Joins("JOIN user_skills_wanted ON skills.skill_id = user_skills_wanted.skill_id").
-		Where("user_skills_wanted.user_id = ?", userID).
-		Find(&userWantedSkills).Error
-	if err != nil {
-		return nil, err
+	matches := make([]SwapMatch, 0, len(rows))
+	for _, r := range rows {
+		matches = append(matches, SwapMatch{
+			User: models.User{
+				UserID:    r.UserID,
+				Name:      r.Name,
+				Email:     r.Email,
+				Location:  r.Location,
+				IsPublic:  r.IsPublic,
+				UpdatedAt: r.UpdatedAt,
+			},
+			OfferedSkill: models.Skill{SkillID: r.OfferedSkillID, Name: r.OfferedName},
+			WantedSkill:  models.Skill{SkillID: r.WantedSkillID, Name: r.WantedName},
+			MatchScore:   int(r.Score*10 + 0.5), // scale to a stable integer
+		})
 	}
-
-	// Find users who want what we offer and offer what we want
-	for _, offeredSkill := range userOfferedSkills {
-		for _, wantedSkill := range userWantedSkills {
-			// Find users who want our offered skill AND offer our wanted skill
-			var potentialUsers []models.User
-			err := s.db.Table("users").
-				Joins("JOIN user_skills_wanted ON users.user_id = user_skills_wanted.user_id").
-				Joins("JOIN user_skills_offered ON users.user_id = user_skills_offered.user_id").
-				Where("user_skills_wanted.skill_id = ? AND user_skills_offered.skill_id = ? AND users.user_id != ? AND users.is_public = true AND users.deleted_at IS NULL",
-					offeredSkill.SkillID, wantedSkill.SkillID, userID).
-				Find(&potentialUsers).Error
-
-			if err != nil {
-				continue
-			}
-
-			for _, user := range potentialUsers {
-				// Calculate match score (simple algorithm for now)
-				matchScore := 80 // Base score for mutual skill match
-
-				matches = append(matches, SwapMatch{
-					User:         user,
-					OfferedSkill: offeredSkill,
-					WantedSkill:  wantedSkill,
-					MatchScore:   matchScore,
-				})
-			}
-		}
-	}
-
-	// Limit results
-	if len(matches) > 20 {
-		matches = matches[:20]
-	}
-
 	return matches, nil
 }
 
