@@ -7,11 +7,11 @@ import { setTokens, notifyAuthChange, decodeTokenPayload } from '@/lib/api';
 /**
  * Google OAuth callback.
  *
- * NOTE on E2EE: OAuth users have no plaintext password client-side, so we
- * cannot derive a PBKDF2 key here for the encrypted private-key backup.
- * E2EE is therefore disabled for OAuth-only accounts on this device until
- * the user sets a local password (future work). We deliberately do NOT
- * call initializeE2EE() here — it would silently rotate keys.
+ * E2EE keys are NOT initialized here — OAuth users have no plaintext
+ * password client-side, so we cannot derive the PBKDF2 key for the
+ * encrypted private-key backup. The `<E2EESetupGate />` mounted in the
+ * root layout will prompt the user for a passphrase the first time they
+ * open a chat-bearing route.
  */
 function CallbackHandler() {
 	const router = useRouter();

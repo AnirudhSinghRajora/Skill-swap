@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Instrument_Serif } from 'next/font/google';
 import { QueryClientProvider } from '@/providers/QueryClientProvider';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { Navigation } from '@/components/Navigation';
+import { E2EESetupGate } from '@/components/E2EESetupGate';
 import './globals.css';
 import { SmoothScroll } from '@/components/smooth-scroll';
 import { Toaster } from 'sonner';
@@ -46,6 +47,7 @@ export default function RootLayout({
 					<QueryClientProvider>
 						<Navigation />
 						<main className="min-h-screen">{children}</main>
+						<E2EESetupGate />
 						<Toaster richColors position="top-right" />
 					</QueryClientProvider>
 				</ThemeProvider>
