@@ -432,6 +432,29 @@ export const swaps = {
       { method: 'DELETE' },
     );
   },
+
+  reportNoShow(id: string, reason?: string) {
+    return apiRequest<{ swap_id: string; no_show_flag: boolean }>(
+      `/swaps/${encodeURIComponent(id)}/no-show`,
+      { method: 'POST', body: JSON.stringify({ reason: reason ?? '' }) },
+    );
+  },
+
+  raiseDispute(id: string, reason: string) {
+    return apiRequest<{ swap_id: string }>(
+      `/swaps/${encodeURIComponent(id)}/dispute`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    );
+  },
+
+  getReliability(userId: string) {
+    return apiRequest<{
+      qualifies: boolean;
+      successful_swaps: number;
+      reported_no_shows: number;
+      score?: number;
+    }>(`/users/${encodeURIComponent(userId)}/reliability`);
+  },
 };
 
 // ─── Ratings ─────────────────────────────────────────────────────────────────

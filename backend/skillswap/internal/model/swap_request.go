@@ -26,6 +26,10 @@ type SwapRequest struct {
 	Status              SwapStatus     `gorm:"type:swap_status;default:'pending'"`
 	RequesterCompleted  bool           `gorm:"column:requester_completed;default:false"`
 	ResponderCompleted  bool           `gorm:"column:responder_completed;default:false"`
+	NoShowFlag          bool           `gorm:"column:no_show_flag;default:false"`
+	NoShowReporterID    *uuid.UUID     `gorm:"type:uuid;column:no_show_reporter_id"`
+	NoShowReason        *string        `gorm:"column:no_show_reason;type:text"`
+	DisputeReason       *string        `gorm:"column:dispute_reason;type:text"`
 	CreatedAt           time.Time      `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt           time.Time      `gorm:"column:updated_at;autoUpdateTime"`
 	DeletedAt           gorm.DeletedAt `gorm:"column:deleted_at;index"`

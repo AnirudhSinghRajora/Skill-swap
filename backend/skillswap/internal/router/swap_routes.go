@@ -19,5 +19,14 @@ func SetupSwapRoutes(api *gin.RouterGroup, cfg *config.Config, swapHandler *swap
 		swaps.GET("/:id", swapHandler.GetSwapRequest)          // GET /api/v1/swaps/:id
 		swaps.PUT("/:id/status", swapHandler.UpdateSwapStatus) // PUT /api/v1/swaps/:id/status
 		swaps.DELETE("/:id", swapHandler.DeleteSwapRequest)    // DELETE /api/v1/swaps/:id
+		swaps.POST("/:id/no-show", swapHandler.ReportNoShow)   // POST /api/v1/swaps/:id/no-show
+		swaps.POST("/:id/dispute", swapHandler.RaiseDispute)   // POST /api/v1/swaps/:id/dispute
+	}
+
+	// Public-ish reliability stats (auth required for consistency with other user endpoints)
+	users := api.Group("/users")
+	users.Use(middleware.JWTAuth(*cfg))
+	{
+		users.GET("/:id/reliability", swapHandler.GetReliability) // GET /api/v1/users/:id/reliability
 	}
 }

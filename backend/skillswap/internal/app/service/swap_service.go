@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/config"
@@ -27,6 +28,20 @@ type SwapService interface {
 
 	// Matching and recommendations
 	FindPotentialMatches(userID uuid.UUID) ([]SwapMatch, error)
+
+	// Trust & safety
+	ReportNoShow(swapID, reporterID uuid.UUID, reason string) (*models.SwapRequest, error)
+	RaiseDispute(swapID, userID uuid.UUID, reason string) (*models.SwapRequest, error)
+	GetReliabilityStats(userID uuid.UUID) (ReliabilityStats, error)
+}
+
+// ReliabilityStats describes a user's swap reliability. Frontend hides the
+// score until the user has at least 3 completed-or-no-show swaps.
+type ReliabilityStats struct {
+	SuccessfulSwaps  int     `json:"successful_swaps"`
+	ReportedNoShows  int     `json:"reported_no_shows"`
+	Score            float64 `json:"score"`     // 0..1
+	Qualifies        bool    `json:"qualifies"` // denominator >= 3
 }
 
 // DTOs and Request structures
@@ -420,3 +435,88 @@ func (s *swapService) FindPotentialMatches(userID uuid.UUID) ([]SwapMatch, error
 
 	return matches, nil
 }
+
+// ReportNoShow flags that the OTHER party did not show up for an accepted swap.
+// Allowed only for participants, only on accepted swaps, and only after 24h
+// have elapsed since the swap was accepted (UpdatedAt as proxy).
+func (s *swapService) ReportNoShow(swapID, reporterID uuid.UUID, reason string) (*models.SwapRequest, error) {
+swap, err := s.GetSwapRequestByID(swapID)
+if err != nil {
+return nil, err
+}
+if swap.RequesterID != reporterID && swap.ResponderID != reporterID {
+return nil, fmt.Errorf("not a participant: %w", apperrors.ErrNotParticipant)
+}
+if swap.Status != models.StatusAccepted {
+return nil, fmt.Errorf("swap must be accepted to report no-show: %w", apperrors.ErrWrongStatus)
+}
+if time.Since(swap.UpdatedAt) < 24*time.Hour {
+return nil, fmt.Errorf("can only report no-show after 24h: %w", apperrors.ErrValidation)
+}
+if swap.NoShowFlag {
+return nil, fmt.Errorf("no-show already reported: %w", apperrors.ErrConflict)
+}
+updates := map[string]any{
+"no_show_flag":         true,
+"no_show_reporter_id":  reporterID,
+"no_show_reason":       reason,
+}
+if err := s.db.Model(&models.SwapRequest{}).Where("swap_id = ?", swapID).Updates(updates).Error; err != nil {
+return nil, err
+}
+return s.GetSwapRequestByID(swapID)
+}
+
+// RaiseDispute attaches a free-form dispute reason to a swap. Either party
+// can dispute at any non-pending status; admins triage via the admin queue.
+func (s *swapService) RaiseDispute(swapID, userID uuid.UUID, reason string) (*models.SwapRequest, error) {
+if reason == "" {
+return nil, fmt.Errorf("reason required: %w", apperrors.ErrValidation)
+}
+swap, err := s.GetSwapRequestByID(swapID)
+if err != nil {
+return nil, err
+}
+if swap.RequesterID != userID && swap.ResponderID != userID {
+return nil, fmt.Errorf("not a participant: %w", apperrors.ErrNotParticipant)
+}
+if err := s.db.Model(&models.SwapRequest{}).Where("swap_id = ?", swapID).
+Update("dispute_reason", reason).Error; err != nil {
+return nil, err
+}
+return s.GetSwapRequestByID(swapID)
+}
+
+// GetReliabilityStats returns per-user swap-reliability counters.
+// Successful = completed swaps where this user participated AND no_show_flag is false.
+// ReportedNoShows = swaps where this user is on the OTHER side of the no-show reporter.
+func (s *swapService) GetReliabilityStats(userID uuid.UUID) (ReliabilityStats, error) {
+var successful int64
+if err := s.db.Model(&models.SwapRequest{}).
+Where("(requester_id = ? OR responder_id = ?) AND status = ? AND no_show_flag = false",
+userID, userID, models.StatusCompleted).
+Count(&successful).Error; err != nil {
+return ReliabilityStats{}, err
+}
+// no-shows reported AGAINST this user: they are the non-reporter participant on a flagged swap.
+var noShows int64
+if err := s.db.Model(&models.SwapRequest{}).
+Where(`no_show_flag = true AND (
+(requester_id = ? AND no_show_reporter_id = responder_id)
+OR (responder_id = ? AND no_show_reporter_id = requester_id)
+)`, userID, userID).
+Count(&noShows).Error; err != nil {
+return ReliabilityStats{}, err
+}
+denom := successful + noShows
+stats := ReliabilityStats{
+SuccessfulSwaps: int(successful),
+ReportedNoShows: int(noShows),
+Qualifies:       denom >= 3,
+}
+if denom > 0 {
+stats.Score = float64(successful) / float64(denom)
+}
+return stats, nil
+}
+

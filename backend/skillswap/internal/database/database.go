@@ -701,6 +701,21 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		log.Println("✓ reports table already exists")
 	}
 
+	// Migration 012: no-show / dispute columns on swap_requests (Commit 3)
+	for col, ddl := range map[string]string{
+		"no_show_flag":        "ALTER TABLE swap_requests ADD COLUMN no_show_flag BOOLEAN NOT NULL DEFAULT FALSE",
+		"no_show_reporter_id": "ALTER TABLE swap_requests ADD COLUMN no_show_reporter_id UUID REFERENCES users(user_id) ON DELETE SET NULL",
+		"no_show_reason":      "ALTER TABLE swap_requests ADD COLUMN no_show_reason TEXT",
+		"dispute_reason":      "ALTER TABLE swap_requests ADD COLUMN dispute_reason TEXT",
+	} {
+		if !db.Migrator().HasColumn(&models.SwapRequest{}, col) {
+			if err := db.Exec(ddl).Error; err != nil {
+				return err
+			}
+			log.Printf("✓ Added swap_requests.%s", col)
+		}
+	}
+
 	return nil
 }
 
