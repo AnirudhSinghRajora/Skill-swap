@@ -23,11 +23,11 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 	// Initialize services
 	userService := service.NewUserService(userRepo)
-	authService := service.NewAuthServiceWithDB(userRepo, *cfg, db)
-	skillService := service.NewSkillService(db)
 	emailService := email.NewService(*cfg)
+	authService := service.NewAuthServiceWithEmail(userRepo, *cfg, db, emailService)
+	skillService := service.NewSkillService(db)
 	notificationService := service.NewNotificationServiceWithEmail(db, emailService)
-	swapService := service.NewSwapService(db, notificationService)
+	swapService := service.NewSwapService(db, notificationService, *cfg)
 	ratingService := service.NewRatingService(db)
 	adminService := service.NewAdminService(db)
 	availabilityService := service.NewAvailabilityService(db)

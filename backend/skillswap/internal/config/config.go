@@ -22,6 +22,12 @@ type Config struct {
 	LiveKitAPIKey      string
 	LiveKitAPISecret   string
 	LiveKitURL         string
+
+	// RequireEmailVerification, when true, gates write actions (creating swap
+	// requests, etc.) on the requester having verified their email. Defaults
+	// to false so existing unverified accounts keep working until ops flips it
+	// after a bulk verify-now mailing. Set via REQUIRE_EMAIL_VERIFICATION=true.
+	RequireEmailVerification bool
 }
 
 func Load() Config {
@@ -49,6 +55,8 @@ func Load() Config {
 	livekitAPIKey := os.Getenv("LIVEKIT_API_KEY")
 	livekitAPISecret := os.Getenv("LIVEKIT_API_SECRET")
 	livekitURL := os.Getenv("LIVEKIT_URL")
+
+	requireEmailVerification := os.Getenv("REQUIRE_EMAIL_VERIFICATION") == "true"
 
 	if dbURL == "" {
 		log.Fatal("DATABASE_URL or DB_URL environment variable is required")
@@ -97,5 +105,7 @@ func Load() Config {
 		LiveKitAPIKey:      livekitAPIKey,
 		LiveKitAPISecret:   livekitAPISecret,
 		LiveKitURL:         livekitURL,
+
+		RequireEmailVerification: requireEmailVerification,
 	}
 }

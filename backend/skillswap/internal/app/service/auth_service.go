@@ -5,12 +5,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"time"
 	"unicode"
 
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/repository"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/config"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/email"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -32,6 +34,7 @@ type AuthService interface {
 	ForgotPassword(email string) (string, error)
 	ResetPassword(token, newPassword string) error
 	SendVerificationEmail(userID uuid.UUID) (string, error)
+	ResendVerificationEmail(userID uuid.UUID) error
 	VerifyEmail(token string) error
 	GetMeInfo(userID uuid.UUID) (*MeInfo, error)
 }
@@ -49,10 +52,11 @@ type MeInfo struct {
 }
 
 type authService struct {
-	userRepo    repository.UserRepository
-	cfg         config.Config
-	db          *gorm.DB
-	oauthConfig *oauth2.Config
+	userRepo     repository.UserRepository
+	cfg          config.Config
+	db           *gorm.DB
+	oauthConfig  *oauth2.Config
+	emailService *email.Service
 }
 
 func NewAuthService(userRepo repository.UserRepository, cfg config.Config) AuthService {
@@ -76,10 +80,19 @@ func NewAuthService(userRepo repository.UserRepository, cfg config.Config) AuthS
 
 // NewAuthServiceWithDB creates an auth service with direct DB access (for token tables)
 func NewAuthServiceWithDB(userRepo repository.UserRepository, cfg config.Config, db *gorm.DB) AuthService {
+	return NewAuthServiceWithEmail(userRepo, cfg, db, nil)
+}
+
+// NewAuthServiceWithEmail creates an auth service with DB + email transport.
+// The email service is optional; when nil, verification tokens are still
+// generated but no message is dispatched (useful for tests / dev without
+// Resend configured).
+func NewAuthServiceWithEmail(userRepo repository.UserRepository, cfg config.Config, db *gorm.DB, emailService *email.Service) AuthService {
 	svc := &authService{
-		userRepo: userRepo,
-		cfg:      cfg,
-		db:       db,
+		userRepo:     userRepo,
+		cfg:          cfg,
+		db:           db,
+		emailService: emailService,
 	}
 
 	if cfg.GoogleClientID != "" && cfg.GoogleClientSecret != "" {
@@ -169,6 +182,21 @@ func (s *authService) Register(req *RegisterRequest) (*AuthResponse, error) {
 
 	if err := s.userRepo.Create(user); err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	// Fire verification email best-effort. Failures here MUST NOT block
+	// registration: the user can request a resend from the dashboard.
+	if s.db != nil && s.emailService != nil && s.emailService.IsConfigured() {
+		go func(uid uuid.UUID, email, name string) {
+			token, err := s.SendVerificationEmail(uid)
+			if err != nil {
+				log.Printf("verify-email: token gen failed for %s: %v", uid, err)
+				return
+			}
+			if err := s.emailService.SendEmailVerification(email, name, token); err != nil {
+				log.Printf("verify-email: send failed for %s: %v", uid, err)
+			}
+		}(user.UserID, user.Email, user.Name)
 	}
 
 	// Generate tokens
@@ -511,8 +539,7 @@ func (s *authService) SendVerificationEmail(userID uuid.UUID) (string, error) {
 }
 
 // VerifyEmail validates a verification token and marks the email as verified
-func (s *authService) VerifyEmail(token string) error {
-	if s.db == nil {
+func (s *authService) VerifyEmail(token string) error {	if s.db == nil {
 		return fmt.Errorf("database not configured: %w", apperrors.ErrValidation)
 	}
 
@@ -534,6 +561,32 @@ func (s *authService) VerifyEmail(token string) error {
 	// Delete the used token
 	s.db.Delete(&verifyToken)
 
+	return nil
+}
+
+// ResendVerificationEmail issues a fresh token and dispatches a verification
+// email. Returns ErrValidation if the user is already verified, ErrNotFound
+// if the user no longer exists. The email send is performed synchronously so
+// the caller can surface a transport failure to the user, but the token is
+// already persisted by that point — a retry will issue another token.
+func (s *authService) ResendVerificationEmail(userID uuid.UUID) error {
+	if s.emailService == nil || !s.emailService.IsConfigured() {
+		return fmt.Errorf("email transport not configured: %w", apperrors.ErrValidation)
+	}
+
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", apperrors.ErrNotFound)
+	}
+
+	token, err := s.SendVerificationEmail(userID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.emailService.SendEmailVerification(user.Email, user.Name, token); err != nil {
+		return fmt.Errorf("failed to send verification email: %w", err)
+	}
 	return nil
 }
 

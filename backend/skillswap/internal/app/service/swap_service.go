@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/config"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -59,10 +60,11 @@ type SwapMatch struct {
 type swapService struct {
 	db                  *gorm.DB
 	notificationService *NotificationService
+	cfg                 config.Config
 }
 
-func NewSwapService(db *gorm.DB, notificationService *NotificationService) SwapService {
-	return &swapService{db: db, notificationService: notificationService}
+func NewSwapService(db *gorm.DB, notificationService *NotificationService, cfg config.Config) SwapService {
+	return &swapService{db: db, notificationService: notificationService, cfg: cfg}
 }
 
 // CreateSwapRequest creates a new swap request
@@ -70,6 +72,22 @@ func (s *swapService) CreateSwapRequest(req *CreateSwapRequestDTO) (*models.Swap
 	// Validate that requester and responder are different
 	if req.RequesterID == req.ResponderID {
 		return nil, fmt.Errorf("cannot create swap request with yourself: %w", apperrors.ErrSelfAction)
+	}
+
+	// Optional gate: when REQUIRE_EMAIL_VERIFICATION=true, the requester
+	// must have a verified email before they can initiate a swap. We fetch
+	// just the verified flag to avoid loading the full user row.
+	if s.cfg.RequireEmailVerification {
+		var verified bool
+		if err := s.db.Model(&models.User{}).
+			Select("email_verified").
+			Where("user_id = ?", req.RequesterID).
+			Scan(&verified).Error; err != nil {
+			return nil, fmt.Errorf("failed to check verification status: %w", err)
+		}
+		if !verified {
+			return nil, fmt.Errorf("please verify your email before sending swap requests: %w", apperrors.ErrEmailNotVerified)
+		}
 	}
 
 	var swapRequest *models.SwapRequest

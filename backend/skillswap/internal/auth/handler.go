@@ -292,3 +292,39 @@ func (h *Handler) VerifyEmail(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Email verified successfully"})
 }
+
+// ResendVerificationEmail re-issues a verification token and sends a new
+// email. Auth-required: only the signed-in user can request their own
+// verification email. Rate-limited at the route level (3/hour per user).
+func (h *Handler) ResendVerificationEmail(c *gin.Context) {
+	uidRaw, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	uidStr, ok := uidRaw.(string)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user id"})
+		return
+	}
+	uid, err := uuid.Parse(uidStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user id"})
+		return
+	}
+
+	if err := h.authService.ResendVerificationEmail(uid); err != nil {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		case errors.Is(err, apperrors.ErrValidation):
+			// covers "already verified" and "transport not configured"
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		default:
+			resp.InternalError(c, err)
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Verification email sent"})
+}

@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useQuery } from '@tanstack/react-query';
 import api, { getPhotoUrl } from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
+import { UnverifiedEmailBanner } from '@/components/UnverifiedEmailBanner';
 import type { NotificationType } from '@/types/notification';
 
 function getNotificationHref(notification: { type: NotificationType; related_id: string | null }): string {
@@ -186,6 +187,7 @@ export default function DashboardPage() {
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+				<UnverifiedEmailBanner />
 				{/* Welcome Header */}
 				<div className="mb-10 animate-fade-in-up">
 					<h1 className="text-display-md text-foreground mb-2">

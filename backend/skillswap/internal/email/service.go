@@ -90,9 +90,12 @@ func (s *Service) SendWelcome(to, name string) error {
 	return s.send(to, subject, html)
 }
 
-// SendEmailVerification sends an email with a verification link.
+// SendEmailVerification sends an email with a verification link. The link
+// points at the frontend /auth/verify page (not the backend API), so the
+// user lands on a styled page that calls the API and shows success/error
+// feedback.
 func (s *Service) SendEmailVerification(to, name, token string) error {
-	verifyURL := fmt.Sprintf("%s/api/v1/auth/verify-email?token=%s", s.frontendURL, token)
+	verifyURL := fmt.Sprintf("%s/auth/verify?token=%s", s.frontendURL, token)
 	subject := "Verify your SkillSwap email"
 	html := fmt.Sprintf(`<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
 <h1 style="color:#4f46e5">Verify Your Email</h1>

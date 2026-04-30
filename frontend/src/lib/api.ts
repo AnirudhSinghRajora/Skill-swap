@@ -227,6 +227,23 @@ export const auth = {
       body: JSON.stringify({ token, new_password: newPassword }),
     });
   },
+
+  // Verify the email-verification token. Used by the /auth/verify page after
+  // the user clicks the link in their inbox.
+  verifyEmail(token: string) {
+    return apiRequest<{ message: string }>(
+      `/auth/verify-email?token=${encodeURIComponent(token)}`,
+      { method: 'GET' },
+    );
+  },
+
+  // Re-issue and re-send a verification email. Auth-required; rate-limited
+  // to 3/hour per user on the server.
+  resendVerification() {
+    return apiRequest<{ message: string }>('/auth/resend-verification', {
+      method: 'POST',
+    });
+  },
 };
 
 // ─── Users ───────────────────────────────────────────────────────────────────
