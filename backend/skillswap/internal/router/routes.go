@@ -6,6 +6,7 @@ import (
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/availability"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/chat"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/cohort"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/config"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/email"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/moderation"
@@ -39,6 +40,7 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	chatService := service.NewChatService(chatRepo, db, notificationService)
 	moderationService := service.NewModerationService(db)
 	sessionService := service.NewSessionService(db)
+	cohortService := service.NewCohortService(db)
 
 	// Initialize handlers
 	skillHandler := skill.NewHandler(skillService)
@@ -49,6 +51,7 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	chatHandler := chat.NewHandler(chatService)
 	moderationHandler := moderation.NewHandler(moderationService)
 	sessionHandler := session.NewHandler(sessionService)
+	cohortHandler := cohort.NewHandler(cohortService)
 
 	// Video call service
 	videoService := service.NewVideoService(*cfg)
@@ -74,6 +77,7 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	SetupVideoRoutes(api, cfg, videoHandler)
 	SetupModerationRoutes(api, cfg, moderationHandler)
 	SetupSessionRoutes(api, cfg, sessionHandler)
+	SetupCohortRoutes(api, cfg, cohortHandler)
 
 	// WebSocket endpoint — auth is handled inside the upgrade handler
 	// (token passed via query param), so no JWT middleware here.

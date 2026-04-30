@@ -801,6 +801,26 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		log.Println("✓ Added sessions.prep_notes")
 	}
 
+	// Migration 020: cohorts + cohort_members + cohort_sessions (Commit 14)
+	if !db.Migrator().HasTable(&models.Cohort{}) {
+		if err := db.AutoMigrate(&models.Cohort{}); err != nil {
+			return err
+		}
+		log.Println("✓ Created cohorts table")
+	}
+	if !db.Migrator().HasTable(&models.CohortMember{}) {
+		if err := db.AutoMigrate(&models.CohortMember{}); err != nil {
+			return err
+		}
+		log.Println("✓ Created cohort_members table")
+	}
+	if !db.Migrator().HasTable(&models.CohortSession{}) {
+		if err := db.AutoMigrate(&models.CohortSession{}); err != nil {
+			return err
+		}
+		log.Println("✓ Created cohort_sessions table")
+	}
+
 	return nil
 }
 

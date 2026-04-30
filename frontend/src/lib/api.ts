@@ -1030,6 +1030,120 @@ export const sessions = {
   },
 };
 
+export type CohortKind = 'cohort' | 'room';
+export type CohortStatus = 'open' | 'in_progress' | 'completed' | 'cancelled';
+
+export interface Cohort {
+  cohort_id: string;
+  host_id: string;
+  skill_id: string;
+  title: string;
+  description: string;
+  capacity: number;
+  kind: CohortKind;
+  is_public: boolean;
+  status: CohortStatus;
+  schedule_pattern?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CohortMember {
+  cohort_id: string;
+  user_id: string;
+  role: 'host' | 'member';
+  joined_at: string;
+}
+
+export interface CohortSession {
+  cohort_session_id: string;
+  cohort_id: string;
+  scheduled_start: string;
+  scheduled_end: string;
+  livekit_room_name?: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CohortDetail {
+  cohort: Cohort;
+  members: CohortMember[];
+}
+
+export interface CreateCohortInput {
+  skill_id: string;
+  title: string;
+  description?: string;
+  capacity?: number;
+  kind?: CohortKind;
+  is_public?: boolean;
+  schedule_pattern?: string;
+}
+
+export interface ListCohortQuery {
+  skill_id?: string;
+  kind?: CohortKind;
+  status?: CohortStatus;
+  has_seats?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export const cohorts = {
+  create(data: CreateCohortInput) {
+    return apiRequest<Cohort>(`/cohorts`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  list(query: ListCohortQuery = {}) {
+    const p = new URLSearchParams();
+    if (query.skill_id) p.set('skill_id', query.skill_id);
+    if (query.kind) p.set('kind', query.kind);
+    if (query.status) p.set('status', query.status);
+    if (query.has_seats) p.set('has_seats', 'true');
+    if (query.limit) p.set('limit', String(query.limit));
+    if (query.offset) p.set('offset', String(query.offset));
+    const qs = p.toString();
+    return apiRequest<{ cohorts: Cohort[] }>(`/cohorts${qs ? `?${qs}` : ''}`);
+  },
+  get(cohortId: string) {
+    return apiRequest<CohortDetail>(`/cohorts/${encodeURIComponent(cohortId)}`);
+  },
+  join(cohortId: string) {
+    return apiRequest<CohortMember>(
+      `/cohorts/${encodeURIComponent(cohortId)}/join`,
+      { method: 'POST' },
+    );
+  },
+  leave(cohortId: string) {
+    return apiRequest<void>(`/cohorts/${encodeURIComponent(cohortId)}/leave`, {
+      method: 'POST',
+    });
+  },
+  addSession(cohortId: string, scheduled_start: string, scheduled_end: string) {
+    return apiRequest<CohortSession>(
+      `/cohorts/${encodeURIComponent(cohortId)}/sessions`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ scheduled_start, scheduled_end }),
+      },
+    );
+  },
+  listSessions(cohortId: string) {
+    return apiRequest<{ sessions: CohortSession[] }>(
+      `/cohorts/${encodeURIComponent(cohortId)}/sessions`,
+    );
+  },
+  removeMember(cohortId: string, userId: string) {
+    return apiRequest<void>(
+      `/cohorts/${encodeURIComponent(cohortId)}/members/${encodeURIComponent(userId)}`,
+      { method: 'DELETE' },
+    );
+  },
+};
+
 export const api = {
   auth,
   users,
@@ -1047,6 +1161,7 @@ export const api = {
   video,
   moderation,
   sessions,
+  cohorts,
 };
 
 export { ApiClientError, clearAuth, getAccessToken, setTokens, notifyAuthChange, updateStoredUser, decodeTokenPayload };
