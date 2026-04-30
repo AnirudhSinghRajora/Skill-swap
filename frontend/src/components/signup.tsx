@@ -52,7 +52,12 @@ export function SignupForm({ className, ...props }: React.ComponentProps<'div'>)
       localStorage.setItem('user', JSON.stringify(data.user));
       notifyAuthChange();
 
-      initializeE2EE(userData.password).catch(() => {});
+      try {
+        await initializeE2EE(userData.password);
+      } catch {
+        setError('Account created, but secure messaging setup failed. Please sign in again to retry.');
+        return;
+      }
 
       router.push('/profile');
     } catch (err: unknown) {

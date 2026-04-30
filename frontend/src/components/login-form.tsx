@@ -7,7 +7,7 @@ import { SiGoogle } from 'react-icons/si';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api, { setTokens, notifyAuthChange, ApiClientError } from '@/lib/api';
-import { initializeE2EE } from '@/lib/e2ee/init';
+import { initializeE2EE, E2EERestoreError } from '@/lib/e2ee/init';
 
 interface UserDataType {
   email: string;
@@ -32,7 +32,16 @@ export function LoginForm({ className, ...props }: React.ComponentProps<'div'>) 
       localStorage.setItem('user', JSON.stringify(data.user));
       notifyAuthChange();
 
-      initializeE2EE(userData.password).catch(() => {});
+      try {
+        await initializeE2EE(userData.password);
+      } catch (e) {
+        const msg =
+          e instanceof E2EERestoreError
+            ? e.message
+            : 'Signed in, but secure messaging setup failed. Please try again.';
+        setError(msg);
+        return;
+      }
 
       router.push('/dashboard');
     } catch (err: unknown) {

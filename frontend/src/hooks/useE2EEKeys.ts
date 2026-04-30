@@ -90,5 +90,20 @@ export function useE2EEKeys(password?: string) {
     });
   }, [initKeys]);
 
+  // If key setup completes later (e.g. auth flow still running), refresh from storage.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onKeysReady = async () => {
+      const local = await getStoredKeyPair();
+      if (local) {
+        setState({ isReady: true, keyPair: local });
+      }
+    };
+
+    window.addEventListener('e2ee-keys-ready', onKeysReady);
+    return () => window.removeEventListener('e2ee-keys-ready', onKeysReady);
+  }, []);
+
   return state;
 }
