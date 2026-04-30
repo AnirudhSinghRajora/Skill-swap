@@ -30,6 +30,7 @@ type SwapRequest struct {
 	NoShowReporterID    *uuid.UUID     `gorm:"type:uuid;column:no_show_reporter_id"`
 	NoShowReason        *string        `gorm:"column:no_show_reason;type:text"`
 	DisputeReason       *string        `gorm:"column:dispute_reason;type:text"`
+	IntroMessage        *string        `gorm:"column:intro_message;type:varchar(280)"`
 	CreatedAt           time.Time      `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt           time.Time      `gorm:"column:updated_at;autoUpdateTime"`
 	DeletedAt           gorm.DeletedAt `gorm:"column:deleted_at;index"`

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
@@ -50,6 +51,7 @@ type CreateSwapRequestDTO struct {
 	ResponderID    uuid.UUID `json:"responder_id" binding:"required"`
 	OfferedSkillID uuid.UUID `json:"offered_skill_id" binding:"required"`
 	WantedSkillID  uuid.UUID `json:"wanted_skill_id" binding:"required"`
+	IntroMessage   string    `json:"intro_message,omitempty" binding:"max=280"`
 }
 
 type SwapRequestFilter struct {
@@ -99,6 +101,17 @@ func (s *swapService) CreateSwapRequest(req *CreateSwapRequestDTO) (*models.Swap
 	}
 	if blockCount > 0 {
 		return nil, fmt.Errorf("this user is unavailable: %w", apperrors.ErrForbidden)
+	}
+
+	// Per-user soft rate limit: at most 5 swap requests created per rolling 24h.
+	var dailyCount int64
+	if err := s.db.Model(&models.SwapRequest{}).
+		Where("requester_id = ? AND created_at > ?", req.RequesterID, time.Now().Add(-24*time.Hour)).
+		Count(&dailyCount).Error; err != nil {
+		return nil, fmt.Errorf("failed to check daily quota: %w", err)
+	}
+	if dailyCount >= 5 {
+		return nil, fmt.Errorf("daily swap-request limit reached (5/day): %w", apperrors.ErrRateLimited)
 	}
 
 	// Optional gate: when REQUIRE_EMAIL_VERIFICATION=true, the requester
@@ -170,6 +183,9 @@ func (s *swapService) CreateSwapRequest(req *CreateSwapRequestDTO) (*models.Swap
 			OfferedSkillID: req.OfferedSkillID,
 			WantedSkillID:  req.WantedSkillID,
 			Status:         models.StatusPending,
+		}
+		if intro := strings.TrimSpace(req.IntroMessage); intro != "" {
+			swapRequest.IntroMessage = &intro
 		}
 
 		if err := tx.Create(swapRequest).Error; err != nil {

@@ -445,6 +445,7 @@ export interface SwapRequestResponse {
   responder: UserInfo;
   offered_skill: SkillResponse;
   wanted_skill: SkillResponse;
+  intro_message?: string | null;
 }
 
 export interface SwapListResponse {
@@ -457,6 +458,7 @@ export const swaps = {
     responder_id: string;
     offered_skill_id: string;
     wanted_skill_id: string;
+    intro_message?: string;
   }) {
     return apiRequest<SwapRequestResponse>('/swaps', {
       method: 'POST',

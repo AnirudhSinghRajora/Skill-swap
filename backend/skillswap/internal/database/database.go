@@ -777,6 +777,14 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		}
 	}
 
+	// Migration 017: intro message on swap requests (Commit 9)
+	if !db.Migrator().HasColumn(&models.SwapRequest{}, "intro_message") {
+		if err := db.Exec("ALTER TABLE swap_requests ADD COLUMN intro_message VARCHAR(280)").Error; err != nil {
+			return err
+		}
+		log.Println("✓ Added swap_requests.intro_message")
+	}
+
 	return nil
 }
 

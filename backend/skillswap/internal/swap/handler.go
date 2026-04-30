@@ -28,6 +28,7 @@ type CreateSwapRequestRequest struct {
 	ResponderID    string `json:"responder_id" binding:"required,uuid"`
 	OfferedSkillID string `json:"offered_skill_id" binding:"required,uuid"`
 	WantedSkillID  string `json:"wanted_skill_id" binding:"required,uuid"`
+	IntroMessage   string `json:"intro_message,omitempty" binding:"max=280"`
 }
 
 type UpdateSwapStatusRequest struct {
@@ -49,6 +50,7 @@ type SwapRequestResponse struct {
 	Responder          *UserResponse  `json:"responder,omitempty"`
 	OfferedSkill       *SkillResponse `json:"offered_skill,omitempty"`
 	WantedSkill        *SkillResponse `json:"wanted_skill,omitempty"`
+	IntroMessage       *string        `json:"intro_message,omitempty"`
 }
 
 type UserResponse struct {
@@ -93,6 +95,9 @@ func (h *Handler) convertToSwapResponse(swap *models.SwapRequest, includeDetails
 		ResponderCompleted: swap.ResponderCompleted,
 		CreatedAt:          swap.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		UpdatedAt:          swap.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+	}
+	if swap.IntroMessage != nil {
+		response.IntroMessage = swap.IntroMessage
 	}
 
 	if includeDetails {
@@ -195,6 +200,7 @@ func (h *Handler) CreateSwapRequest(c *gin.Context) {
 		ResponderID:    responderID,
 		OfferedSkillID: offeredSkillID,
 		WantedSkillID:  wantedSkillID,
+		IntroMessage:   req.IntroMessage,
 	}
 
 	swap, err := h.swapService.CreateSwapRequest(swapDTO)
@@ -208,6 +214,8 @@ func (h *Handler) CreateSwapRequest(c *gin.Context) {
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "code": "blocked"})
 		case errors.Is(err, apperrors.ErrDuplicate):
 			c.JSON(http.StatusConflict, ErrorResponse{Error: err.Error()})
+		case errors.Is(err, apperrors.ErrRateLimited):
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error(), "code": "rate_limited"})
 		default:
 			resp.InternalError(c, err)
 		}

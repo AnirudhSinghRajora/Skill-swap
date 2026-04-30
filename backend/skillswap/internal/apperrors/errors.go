@@ -24,7 +24,8 @@ var (
 
 // Validation errors
 var (
-	ErrValidation = errors.New("validation error")
+	ErrValidation  = errors.New("validation error")
+	ErrRateLimited = errors.New("rate limited")
 )
 
 // File errors
