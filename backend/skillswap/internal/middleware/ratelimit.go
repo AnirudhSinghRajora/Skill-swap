@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +13,7 @@ type RateLimitConfig struct {
 	Duration time.Duration             // Time window
 	Message  string                    // Error message when rate limit exceeded
 	KeyFunc  func(*gin.Context) string // Function to generate rate limit key
+	Limiter  Limiter                   // Optional override; defaults to DefaultLimiter()
 }
 
 // DefaultRateLimitConfig returns default rate limiting configuration
@@ -26,81 +26,29 @@ func DefaultRateLimitConfig() RateLimitConfig {
 	}
 }
 
-// RateLimit returns a rate limiting middleware
+// RateLimit returns a rate limiting middleware backed by the configured Limiter
+// (in-memory by default, pluggable via Limiter interface for distributed backends).
 func RateLimit(config ...RateLimitConfig) gin.HandlerFunc {
 	cfg := DefaultRateLimitConfig()
 	if len(config) > 0 {
 		cfg = config[0]
 	}
-
-	// Simple in-memory rate limiter
-	// For production, consider using Redis
-	type client struct {
-		count     int
-		resetTime time.Time
-		mutex     sync.Mutex
+	limiter := cfg.Limiter
+	if limiter == nil {
+		limiter = DefaultLimiter()
 	}
-
-	clients := make(map[string]*client)
-	mutex := sync.RWMutex{}
-
-	// Cleanup routine
-	go func() {
-		for {
-			time.Sleep(time.Minute)
-			mutex.Lock()
-			for key, c := range clients {
-				c.mutex.Lock()
-				if time.Now().After(c.resetTime) {
-					delete(clients, key)
-				}
-				c.mutex.Unlock()
-			}
-			mutex.Unlock()
-		}
-	}()
 
 	return func(c *gin.Context) {
 		key := cfg.KeyFunc(c)
-
-		mutex.RLock()
-		clientData, exists := clients[key]
-		mutex.RUnlock()
-
-		if !exists {
-			mutex.Lock()
-			clientData = &client{
-				count:     1,
-				resetTime: time.Now().Add(cfg.Duration),
-			}
-			clients[key] = clientData
-			mutex.Unlock()
-			c.Next()
-			return
-		}
-
-		clientData.mutex.Lock()
-		defer clientData.mutex.Unlock()
-
-		// Reset if time window has passed
-		if time.Now().After(clientData.resetTime) {
-			clientData.count = 1
-			clientData.resetTime = time.Now().Add(cfg.Duration)
-			c.Next()
-			return
-		}
-
-		// Check if limit exceeded
-		if clientData.count >= cfg.Max {
+		ok, resetAt := limiter.Allow(key, cfg.Max, cfg.Duration)
+		if !ok {
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"error":       cfg.Message,
-				"retry_after": int(time.Until(clientData.resetTime).Seconds()),
+				"retry_after": int(time.Until(resetAt).Seconds()),
 			})
 			c.Abort()
 			return
 		}
-
-		clientData.count++
 		c.Next()
 	}
 }
