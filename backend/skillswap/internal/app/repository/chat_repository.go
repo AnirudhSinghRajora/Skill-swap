@@ -36,6 +36,10 @@ type ChatRepository interface {
 	GetChatImage(imageID uuid.UUID) (*models.ChatImage, error)
 	LinkImagesToMessage(imageIDs []uuid.UUID, messageID uuid.UUID) error
 
+	// Chat audio (voice notes)
+	CreateChatAudio(a *models.ChatAudio) error
+	GetChatAudio(audioID uuid.UUID) (*models.ChatAudio, error)
+
 	// Authorization
 	IsParticipant(userID, conversationID uuid.UUID) (bool, error)
 	GetConversationParticipantIDs(conversationID uuid.UUID) (uuid.UUID, uuid.UUID, error)
@@ -299,4 +303,24 @@ func (r *chatRepository) UpdateLastMessageAt(conversationID uuid.UUID, t time.Ti
 	return r.db.Model(&models.Conversation{}).
 		Where("conversation_id = ?", conversationID).
 		Update("last_message_at", t).Error
+}
+
+// CreateChatAudio inserts a new chat_audio row. The blob lives in BYTEA.
+func (r *chatRepository) CreateChatAudio(a *models.ChatAudio) error {
+	if err := r.db.Create(a).Error; err != nil {
+		return fmt.Errorf("create chat audio: %w", err)
+	}
+	return nil
+}
+
+// GetChatAudio retrieves an audio row by id, including the blob.
+func (r *chatRepository) GetChatAudio(audioID uuid.UUID) (*models.ChatAudio, error) {
+	var a models.ChatAudio
+	if err := r.db.Where("audio_id = ?", audioID).First(&a).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.ErrNotFound
+		}
+		return nil, fmt.Errorf("get chat audio: %w", err)
+	}
+	return &a, nil
 }

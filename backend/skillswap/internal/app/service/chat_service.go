@@ -18,6 +18,14 @@ const (
 	MaxEditWindow = 15 * time.Minute
 	// MaxImageSize is the maximum allowed chat image size in bytes (5MB).
 	MaxImageSize = 5 * 1024 * 1024
+	// MaxAudioSize caps a single voice note at 10MB. At ~32kbps Opus that
+	// is roughly 40 minutes of audio, far longer than any practical
+	// chat-clip use case while still bounded enough that a malicious
+	// client can't exhaust storage with a few requests.
+	MaxAudioSize = 10 * 1024 * 1024
+	// MaxAudioDurationMs caps the client-reported duration. We don't
+	// re-decode the blob server-side; this is just a sanity bound.
+	MaxAudioDurationMs = 10 * 60 * 1000 // 10 minutes
 )
 
 // ChatService defines the business logic for the chat feature.
@@ -41,6 +49,10 @@ type ChatService interface {
 	UploadChatImage(uploaderID uuid.UUID, data []byte, mimeType string, encrypted bool) (*models.ChatImage, error)
 	GetChatImage(imageID, userID uuid.UUID) (*models.ChatImage, error)
 	GetChatImagePublic(imageID uuid.UUID) (*models.ChatImage, error)
+
+	// Audio (voice notes)
+	UploadChatAudio(uploaderID uuid.UUID, data []byte, mimeType string, durationMs int32, encrypted bool) (*models.ChatAudio, error)
+	GetChatAudioPublic(audioID uuid.UUID) (*models.ChatAudio, error)
 
 	// Swap completion
 	MarkSwapComplete(swapID, userID uuid.UUID) (*models.SwapRequest, error)
@@ -517,4 +529,66 @@ func (s *chatService) UndoSwapComplete(swapID, userID uuid.UUID) (*models.SwapRe
 	}
 
 	return &swap, nil
+}
+
+// --- Audio (voice notes) ---
+
+// allowedAudioMimes are the formats we accept for plaintext (non-E2EE) uploads.
+// We deliberately keep the list small: webm/opus is what MediaRecorder emits
+// in Chromium, mp4/aac is what Safari emits, and we let the client send
+// audio/ogg as a fallback. Encrypted blobs are stored as octet-stream.
+var allowedAudioMimes = map[string]bool{
+	"audio/webm":          true,
+	"audio/webm;codecs=opus": true,
+	"audio/ogg":           true,
+	"audio/ogg;codecs=opus":  true,
+	"audio/mp4":           true,
+	"audio/mpeg":          true,
+	"audio/aac":           true,
+	"audio/wav":           true,
+}
+
+// UploadChatAudio stores a voice-note blob. As with images, the audio is
+// not yet linked to a message — the client receives the audio_id and
+// includes it in the (possibly encrypted) chat message body.
+//
+// The blob itself is stored verbatim. For E2EE conversations the client
+// encrypts the audio with the shared conversation key before upload, so
+// the server only ever sees opaque ciphertext.
+func (s *chatService) UploadChatAudio(uploaderID uuid.UUID, data []byte, mimeType string, durationMs int32, encrypted bool) (*models.ChatAudio, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty audio: %w", apperrors.ErrValidation)
+	}
+	if len(data) > MaxAudioSize {
+		return nil, fmt.Errorf("audio exceeds %dMB: %w", MaxAudioSize/(1024*1024), apperrors.ErrFileTooLarge)
+	}
+	if durationMs < 0 || durationMs > MaxAudioDurationMs {
+		return nil, fmt.Errorf("audio duration out of range: %w", apperrors.ErrValidation)
+	}
+	if encrypted {
+		mimeType = "application/octet-stream"
+	} else if !allowedAudioMimes[mimeType] {
+		return nil, fmt.Errorf("unsupported audio type %s: %w", mimeType, apperrors.ErrInvalidFileType)
+	}
+
+	a := &models.ChatAudio{
+		UploaderID: uploaderID,
+		AudioData:  data,
+		MimeType:   mimeType,
+		DurationMs: durationMs,
+		Encrypted:  encrypted,
+		FileSize:   len(data),
+	}
+	if err := s.repo.CreateChatAudio(a); err != nil {
+		return nil, fmt.Errorf("store chat audio: %w", err)
+	}
+	return a, nil
+}
+
+// GetChatAudioPublic mirrors GetChatImagePublic: served unauthenticated
+// because <audio> tags can't carry a JWT, with security relying on the
+// unguessable UUID. For E2EE conversations the blob is opaque ciphertext
+// anyway and only participants hold the decryption key.
+func (s *chatService) GetChatAudioPublic(audioID uuid.UUID) (*models.ChatAudio, error) {
+return s.repo.GetChatAudio(audioID)
 }

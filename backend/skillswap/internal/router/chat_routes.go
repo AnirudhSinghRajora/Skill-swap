@@ -14,6 +14,8 @@ import (
 func SetupChatRoutes(api *gin.RouterGroup, cfg *config.Config, chatHandler *chat.Handler) {
 	// Public: serve chat images (browser <img> tags can't send JWT headers)
 	api.GET("/chat/images/:id", chatHandler.ServeImage)
+	// Public: serve chat audio for the same reason as above.
+	api.GET("/chat/audio/:id", chatHandler.ServeAudio)
 
 	chatGroup := api.Group("/chat")
 	chatGroup.Use(middleware.JWTAuth(*cfg))
@@ -58,6 +60,18 @@ func SetupChatRoutes(api *gin.RouterGroup, cfg *config.Config, chatHandler *chat
 				},
 			}),
 			chatHandler.UploadImage,
+		)
+		chatGroup.POST("/audio",
+			middleware.RateLimit(middleware.RateLimitConfig{
+				Max:      10,
+				Duration: time.Minute,
+				Message:  "Audio upload rate limit exceeded.",
+				KeyFunc: func(c *gin.Context) string {
+					uid, _ := c.Get("user_id")
+					return "chat_audio:" + uid.(string)
+				},
+			}),
+			chatHandler.UploadAudio,
 		)
 		// ── Swap completion ──────────────────────────────────────────
 		chatGroup.PUT("/swaps/:swapId/complete", chatHandler.MarkSwapComplete)

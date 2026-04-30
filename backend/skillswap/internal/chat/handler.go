@@ -477,3 +477,71 @@ func (h *Handler) buildSwapCompletionResponse(swap *models.SwapRequest) gin.H {
 		"wanted_skill":        gin.H{"skill_id": swap.WantedSkill.SkillID.String(), "name": swap.WantedSkill.Name},
 	}
 }
+
+// UploadAudio handles multipart audio upload for chat voice notes.
+// POST /chat/audio
+//
+// Mirrors UploadImage: multipart form, optional `encrypted=true` flag,
+// optional `duration_ms` hint. The Service enforces all bounds (size,
+// duration, mime allow-list).
+func (h *Handler) UploadAudio(c *gin.Context) {
+	userID, ok := h.getUserID(c)
+	if !ok {
+		return
+	}
+
+	file, header, err := c.Request.FormFile("audio")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no audio file provided"})
+		return
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, int64(appservice.MaxAudioSize)+1))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read audio data"})
+		return
+	}
+	mimeType := header.Header.Get("Content-Type")
+	if mimeType == "" {
+		mimeType = http.DetectContentType(data)
+	}
+	encrypted := c.PostForm("encrypted") == "true"
+	var durationMs int32
+	if v := c.PostForm("duration_ms"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			durationMs = int32(n)
+		}
+	}
+
+	a, err := h.chatService.UploadChatAudio(userID, data, mimeType, durationMs, encrypted)
+	if err != nil {
+		h.handleServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+"audio_id":    a.AudioID.String(),
+		"mime_type":   a.MimeType,
+		"file_size":   a.FileSize,
+		"duration_ms": a.DurationMs,
+		"encrypted":   a.Encrypted,
+	})
+}
+
+// ServeAudio serves a chat audio blob.
+// GET /chat/audio/:id — public (no auth) since <audio> tags can't carry JWT.
+// Audio IDs are unguessable UUIDs and E2EE blobs are encrypted on the wire.
+func (h *Handler) ServeAudio(c *gin.Context) {
+audioID, ok := h.parseUUIDParam(c, "id")
+if !ok {
+return
+}
+a, err := h.chatService.GetChatAudioPublic(audioID)
+if err != nil {
+h.handleServiceError(c, err)
+return
+}
+c.Header("Content-Type", a.MimeType)
+c.Header("Cache-Control", "private, max-age=86400")
+c.Data(http.StatusOK, a.MimeType, a.AudioData)
+}

@@ -847,6 +847,14 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		log.Println("✓ Created votes table + uq_votes_voter_target")
 	}
 
+	// Migration 022: chat_audio (Commit 17)
+	if !db.Migrator().HasTable(&models.ChatAudio{}) {
+		if err := db.AutoMigrate(&models.ChatAudio{}); err != nil {
+			return err
+		}
+		log.Println("✓ Created chat_audio table")
+	}
+
 	return nil
 }
 

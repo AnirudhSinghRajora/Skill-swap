@@ -1275,6 +1275,49 @@ export const votes = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Voice notes in chat (Commit 17)
+// ---------------------------------------------------------------------------
+
+export interface ChatAudioUploadResponse {
+  audio_id: string;
+  mime_type: string;
+  file_size: number;
+  duration_ms: number;
+  encrypted: boolean;
+}
+
+export const chatAudio = {
+  /**
+   * Upload a voice note. The blob is sent as multipart form data so we
+   * can attach the optional `encrypted` and `duration_ms` flags without
+   * a JSON envelope.
+   *
+   * For E2EE conversations, callers should encrypt the blob *before*
+   * passing it in and set `encrypted=true`; the server stores the
+   * ciphertext as application/octet-stream.
+   */
+  upload(blob: Blob, opts: { durationMs?: number; encrypted?: boolean } = {}) {
+    const fd = new FormData();
+    fd.append('audio', blob, 'voice-note');
+    if (opts.durationMs !== undefined) fd.append('duration_ms', String(opts.durationMs));
+    if (opts.encrypted) fd.append('encrypted', 'true');
+    return apiRequest<ChatAudioUploadResponse>('/chat/audio', {
+      method: 'POST',
+      body: fd,
+    });
+  },
+  /**
+   * Build a URL for an <audio> tag. The endpoint is intentionally
+   * unauthenticated; security comes from the unguessable UUID and (for
+   * E2EE conversations) from the audio being ciphertext that only
+   * participants can decrypt.
+   */
+  url(audioId: string) {
+    return `${API_BASE_URL}/chat/audio/${encodeURIComponent(audioId)}`;
+  },
+};
+
 export const api = {
   auth,
   users,
@@ -1296,6 +1339,7 @@ export const api = {
   questions,
   answers,
   votes,
+  chatAudio,
 };
 
 export { ApiClientError, clearAuth, getAccessToken, setTokens, notifyAuthChange, updateStoredUser, decodeTokenPayload };

@@ -78,6 +78,10 @@ func (m *mockChatRepo) CreateChatImage(_ *models.ChatImage) error        { retur
 func (m *mockChatRepo) GetChatImage(_ uuid.UUID) (*models.ChatImage, error) {
 	return nil, nil
 }
+func (m *mockChatRepo) CreateChatAudio(_ *models.ChatAudio) error { return nil }
+func (m *mockChatRepo) GetChatAudio(_ uuid.UUID) (*models.ChatAudio, error) {
+	return nil, nil
+}
 func (m *mockChatRepo) GetConversationParticipantIDs(_ uuid.UUID) (uuid.UUID, uuid.UUID, error) {
 	return uuid.Nil, uuid.Nil, nil
 }
