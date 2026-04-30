@@ -204,7 +204,14 @@ export const auth = {
   },
 
   me() {
-    return apiRequest<{ user_id: string; email: string }>('/auth/me');
+    return apiRequest<{
+      user_id: string;
+      email: string;
+      name: string;
+      has_public_key: boolean;
+      has_key_backup: boolean;
+      email_verified: boolean;
+    }>('/auth/me');
   },
 
   forgotPassword(email: string) {
