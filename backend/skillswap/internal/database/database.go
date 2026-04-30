@@ -652,6 +652,55 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		log.Println("✓ Email verification tokens table already exists")
 	}
 
+	// Migration 011: user_blocks + reports (Commit 2)
+	if !db.Migrator().HasTable("user_blocks") {
+		log.Println("Creating user_blocks table...")
+		sql := `
+			CREATE TABLE IF NOT EXISTS user_blocks (
+				blocker_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+				blocked_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (blocker_id, blocked_id),
+				CHECK (blocker_id <> blocked_id)
+			);
+			CREATE INDEX IF NOT EXISTS idx_user_blocks_blocked_id ON user_blocks(blocked_id);
+		`
+		if err := db.Exec(sql).Error; err != nil {
+			return err
+		}
+		log.Println("✓ Created user_blocks table")
+	} else {
+		log.Println("✓ user_blocks table already exists")
+	}
+
+	if !db.Migrator().HasTable("reports") {
+		log.Println("Creating reports table...")
+		sql := `
+			CREATE TABLE IF NOT EXISTS reports (
+				report_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				reporter_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+				target_user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+				target_kind VARCHAR(20) NOT NULL,
+				target_id UUID,
+				reason TEXT NOT NULL,
+				status VARCHAR(20) NOT NULL DEFAULT 'open',
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				resolved_at TIMESTAMP WITH TIME ZONE,
+				resolver_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+				resolution_note TEXT
+			);
+			CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
+			CREATE INDEX IF NOT EXISTS idx_reports_target_user ON reports(target_user_id);
+			CREATE INDEX IF NOT EXISTS idx_reports_reporter ON reports(reporter_id);
+		`
+		if err := db.Exec(sql).Error; err != nil {
+			return err
+		}
+		log.Println("✓ Created reports table")
+	} else {
+		log.Println("✓ reports table already exists")
+	}
+
 	return nil
 }
 

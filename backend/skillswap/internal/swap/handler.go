@@ -204,6 +204,8 @@ func (h *Handler) CreateSwapRequest(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		case errors.Is(err, apperrors.ErrEmailNotVerified):
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "code": "email_not_verified"})
+		case errors.Is(err, apperrors.ErrForbidden):
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "code": "blocked"})
 		case errors.Is(err, apperrors.ErrDuplicate):
 			c.JSON(http.StatusConflict, ErrorResponse{Error: err.Error()})
 		default:

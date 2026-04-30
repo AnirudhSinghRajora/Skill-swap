@@ -186,6 +186,24 @@ func (s *chatService) SendMessage(conversationID, senderID uuid.UUID, content st
 		return nil, fmt.Errorf("user is not a participant of this conversation: %w", apperrors.ErrNotParticipant)
 	}
 
+	// Block check: if either party has blocked the other, reject the message.
+	// Two-participant model — fetch the other side via the swap_request row.
+	var otherID uuid.UUID
+	if err := s.db.Raw(`
+		SELECT CASE WHEN sr.requester_id = ? THEN sr.responder_id ELSE sr.requester_id END
+		FROM conversations c
+		JOIN swap_requests sr ON sr.swap_id = c.swap_id
+		WHERE c.conversation_id = ?
+	`, senderID, conversationID).Scan(&otherID).Error; err == nil && otherID != uuid.Nil {
+		var blockCount int64
+		if err := s.db.Model(&models.UserBlock{}).
+			Where("(blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)",
+				senderID, otherID, otherID, senderID).
+			Count(&blockCount).Error; err == nil && blockCount > 0 {
+			return nil, fmt.Errorf("cannot send: conversation is blocked: %w", apperrors.ErrForbidden)
+		}
+	}
+
 	msg := &models.Message{
 		ConversationID: conversationID,
 		SenderID:       senderID,

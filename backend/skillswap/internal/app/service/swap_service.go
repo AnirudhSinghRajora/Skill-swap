@@ -74,6 +74,18 @@ func (s *swapService) CreateSwapRequest(req *CreateSwapRequestDTO) (*models.Swap
 		return nil, fmt.Errorf("cannot create swap request with yourself: %w", apperrors.ErrSelfAction)
 	}
 
+	// Refuse if either party has blocked the other (either direction).
+	var blockCount int64
+	if err := s.db.Model(&models.UserBlock{}).
+		Where("(blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)",
+			req.RequesterID, req.ResponderID, req.ResponderID, req.RequesterID).
+		Count(&blockCount).Error; err != nil {
+		return nil, fmt.Errorf("failed to check block status: %w", err)
+	}
+	if blockCount > 0 {
+		return nil, fmt.Errorf("this user is unavailable: %w", apperrors.ErrForbidden)
+	}
+
 	// Optional gate: when REQUIRE_EMAIL_VERIFICATION=true, the requester
 	// must have a verified email before they can initiate a swap. We fetch
 	// just the verified flag to avoid loading the full user row.

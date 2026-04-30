@@ -8,6 +8,7 @@ import (
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/chat"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/config"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/email"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/moderation"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/rating"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/skill"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/swap"
@@ -35,6 +36,7 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	fileUploadService := service.NewFileUploadService(db)
 	chatRepo := repository.NewChatRepository(db)
 	chatService := service.NewChatService(chatRepo, db, notificationService)
+	moderationService := service.NewModerationService(db)
 
 	// Initialize handlers
 	skillHandler := skill.NewHandler(skillService)
@@ -43,6 +45,7 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	adminHandler := admin.NewHandler(adminService)
 	availabilityHandler := availability.NewHandler(availabilityService)
 	chatHandler := chat.NewHandler(chatService)
+	moderationHandler := moderation.NewHandler(moderationService)
 
 	// Video call service
 	videoService := service.NewVideoService(*cfg)
@@ -66,6 +69,7 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	SetupFileRoutes(api, fileUploadService, cfg)
 	SetupChatRoutes(api, cfg, chatHandler)
 	SetupVideoRoutes(api, cfg, videoHandler)
+	SetupModerationRoutes(api, cfg, moderationHandler)
 
 	// WebSocket endpoint — auth is handled inside the upgrade handler
 	// (token passed via query param), so no JWT middleware here.

@@ -772,6 +772,61 @@ export const video = {
 
 // ─── Exports ─────────────────────────────────────────────────────────────────
 
+export const moderation = {
+  block: (userId: string) =>
+    apiRequest<{ message: string }>('/moderation/blocks', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId }),
+    }),
+  unblock: (userId: string) =>
+    apiRequest<{ message: string }>(`/moderation/blocks/${userId}`, { method: 'DELETE' }),
+  listBlocks: () =>
+    apiRequest<{ blocks: Array<{ blocked_id: string; created_at: string }> }>(
+      '/moderation/blocks'
+    ),
+  createReport: (payload: {
+    target_user_id: string;
+    target_kind: 'user' | 'message' | 'swap';
+    target_id?: string;
+    reason: string;
+  }) =>
+    apiRequest<{ report_id: string }>('/moderation/reports', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  // Admin endpoints
+  adminListReports: (params?: { status?: string; limit?: number; offset?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set('status', params.status);
+    if (params?.limit != null) q.set('limit', String(params.limit));
+    if (params?.offset != null) q.set('offset', String(params.offset));
+    const qs = q.toString();
+    return apiRequest<{
+      reports: Array<{
+        report_id: string;
+        reporter_id: string;
+        target_user_id: string;
+        target_kind: string;
+        target_id: string | null;
+        reason: string;
+        status: string;
+        created_at: string;
+        resolved_at: string | null;
+        resolver_id: string | null;
+        resolution_note: string | null;
+      }>;
+      total: number;
+      limit: number;
+      offset: number;
+    }>(`/admin/abuse-reports${qs ? `?${qs}` : ''}`);
+  },
+  adminResolveReport: (id: string, payload: { status: 'resolved' | 'dismissed' | 'reviewing'; note?: string }) =>
+    apiRequest<{ message: string }>(`/admin/abuse-reports/${id}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+};
+
 export const api = {
   auth,
   users,
@@ -787,6 +842,7 @@ export const api = {
   chatUnread,
   e2eeKeys,
   video,
+  moderation,
 };
 
 export { ApiClientError, clearAuth, getAccessToken, setTokens, notifyAuthChange, updateStoredUser, decodeTokenPayload };
