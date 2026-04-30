@@ -296,9 +296,9 @@ export default function PublicProfilePage({
 						{user && !isOwnProfile && commonSlots.length === 0 && (
 							<Card>
 								<CardContent className="p-8 text-center text-muted-foreground">
-									No common availability found. Set your own availability in{' '}
-									<Link href="/settings" className="text-primary underline">
-										Settings
+									No common availability found. Set your own availability in your{' '}
+									<Link href="/profile" className="text-primary underline">
+										profile
 									</Link>{' '}
 									to find matching times.
 								</CardContent>

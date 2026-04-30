@@ -11,7 +11,6 @@ import {
 	Home,
 	Users,
 	User,
-	Settings,
 	LogOut,
 	ArrowRight,
 	Menu,
@@ -66,8 +65,7 @@ export function Navigation() {
 		{ href: '/browse', label: 'Browse', icon: Users },
 		{ href: '/messages', label: 'Messages', icon: MessageCircle, badge: chatUnread },
 		{ href: '/swaps', label: 'Swaps', icon: ArrowRight },
-		{ href: '/profile', label: 'Profile', icon: User },
-		{ href: '/settings', label: 'Settings', icon: Settings }
+		{ href: '/profile', label: 'Profile', icon: User }
 	];
 
 	const isAuthPage = pathname?.startsWith('/auth');
