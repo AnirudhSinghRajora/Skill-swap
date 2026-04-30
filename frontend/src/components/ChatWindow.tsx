@@ -45,11 +45,12 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
   const { sharedKey, isReady: sharedKeyReady } = useConversationKeys(keyPair, otherUserId);
 
   const secureChatReady = !!sharedKey;
+  const peerName = convo?.other_user?.name ?? 'the other user';
   const secureChatBlockedReason = !localKeysReady
     ? 'Setting up your encryption keys...'
     : !sharedKeyReady
       ? 'Establishing secure channel...'
-      : 'Secure chat unavailable. The other user may not have encryption keys yet.';
+      : `Waiting for ${peerName} to enable secure messaging.`;
 
   const {
     messages,
