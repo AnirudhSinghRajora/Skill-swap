@@ -33,6 +33,19 @@ type AuthService interface {
 	ResetPassword(token, newPassword string) error
 	SendVerificationEmail(userID uuid.UUID) (string, error)
 	VerifyEmail(token string) error
+	GetMeInfo(userID uuid.UUID) (*MeInfo, error)
+}
+
+// MeInfo is the lightweight self-profile used by GET /auth/me. The boolean
+// flags let the client decide whether E2EE setup is required without
+// fetching any sensitive material.
+type MeInfo struct {
+	UserID        uuid.UUID `json:"user_id"`
+	Name          string    `json:"name"`
+	Email         string    `json:"email"`
+	HasPublicKey  bool      `json:"has_public_key"`
+	HasKeyBackup  bool      `json:"has_key_backup"`
+	EmailVerified bool      `json:"email_verified"`
 }
 
 type authService struct {
@@ -203,6 +216,24 @@ func (s *authService) RefreshToken(refreshToken string) (*AuthResponse, error) {
 	}
 
 	return s.generateAuthResponse(user)
+}
+
+// GetMeInfo returns the lightweight self-profile used by GET /auth/me.
+// The HasPublicKey / HasKeyBackup flags drive client-side E2EE setup
+// gating without leaking any sensitive material.
+func (s *authService) GetMeInfo(userID uuid.UUID) (*MeInfo, error) {
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", apperrors.ErrNotFound)
+	}
+	return &MeInfo{
+		UserID:        user.UserID,
+		Name:          user.Name,
+		Email:         user.Email,
+		HasPublicKey:  user.PublicKey != nil && *user.PublicKey != "",
+		HasKeyBackup:  user.EncryptedKeyBackup != nil && *user.EncryptedKeyBackup != "",
+		EmailVerified: user.EmailVerified,
+	}, nil
 }
 
 // ValidateToken validates and parses JWT token

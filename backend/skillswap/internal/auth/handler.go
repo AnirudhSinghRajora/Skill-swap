@@ -11,6 +11,7 @@ import (
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/config"
 	resp "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/response"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -146,7 +147,7 @@ func (h *Handler) Logout(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} appservice.UserInfo
+// @Success 200 {object} appservice.MeInfo
 // @Failure 401 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /auth/me [get]
@@ -157,18 +158,23 @@ func (h *Handler) GetMe(c *gin.Context) {
 		return
 	}
 
-	email, exists := c.Get("email")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Email not found in token"})
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
 
-	// Return basic user info from token
-	// For complete profile, user should use /users/profile endpoint
-	c.JSON(http.StatusOK, gin.H{
-		"user_id": userIDStr,
-		"email":   email,
-	})
+	info, err := h.authService.GetMeInfo(userID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		resp.InternalError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, info)
 }
 
 // DTOs
