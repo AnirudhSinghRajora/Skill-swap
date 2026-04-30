@@ -556,6 +556,102 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		log.Println("✓ Messages encrypted field already exists")
 	}
 
+	// Check if OAuth/email columns exist on users table (Migration 010)
+	var hasAuthProvider bool
+	err = db.Raw("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='auth_provider')").Scan(&hasAuthProvider).Error
+	if err != nil {
+		return err
+	}
+
+	if !hasAuthProvider {
+		log.Println("Adding OAuth/email fields to users table...")
+
+		sql := `
+			ALTER TABLE users
+			ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(20) NOT NULL DEFAULT 'local',
+			ADD COLUMN IF NOT EXISTS google_id VARCHAR(255) UNIQUE,
+			ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+
+			ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+
+			CREATE INDEX IF NOT EXISTS idx_users_auth_provider ON users(auth_provider);
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id_unique ON users(google_id) WHERE google_id IS NOT NULL;
+		`
+
+		if err := db.Exec(sql).Error; err != nil {
+			return err
+		}
+
+		log.Println("✓ Added OAuth/email fields to users table")
+	} else {
+		log.Println("✓ OAuth/email fields already exist")
+	}
+
+	// Ensure password reset tokens table exists
+	var hasPasswordResetTable bool
+	err = db.Raw("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='password_reset_tokens')").Scan(&hasPasswordResetTable).Error
+	if err != nil {
+		return err
+	}
+
+	if !hasPasswordResetTable {
+		log.Println("Creating password reset tokens table...")
+
+		sql := `
+			CREATE TABLE IF NOT EXISTS password_reset_tokens (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+				token VARCHAR(255) NOT NULL UNIQUE,
+				expires_at TIMESTAMP NOT NULL,
+				used BOOLEAN NOT NULL DEFAULT FALSE,
+				created_at TIMESTAMP DEFAULT NOW()
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
+			CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+		`
+
+		if err := db.Exec(sql).Error; err != nil {
+			return err
+		}
+
+		log.Println("✓ Created password reset tokens table")
+	} else {
+		log.Println("✓ Password reset tokens table already exists")
+	}
+
+	// Ensure email verification tokens table exists
+	var hasEmailVerificationTable bool
+	err = db.Raw("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='email_verification_tokens')").Scan(&hasEmailVerificationTable).Error
+	if err != nil {
+		return err
+	}
+
+	if !hasEmailVerificationTable {
+		log.Println("Creating email verification tokens table...")
+
+		sql := `
+			CREATE TABLE IF NOT EXISTS email_verification_tokens (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+				token VARCHAR(255) NOT NULL UNIQUE,
+				expires_at TIMESTAMP NOT NULL,
+				created_at TIMESTAMP DEFAULT NOW()
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_token ON email_verification_tokens(token);
+			CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_user_id ON email_verification_tokens(user_id);
+		`
+
+		if err := db.Exec(sql).Error; err != nil {
+			return err
+		}
+
+		log.Println("✓ Created email verification tokens table")
+	} else {
+		log.Println("✓ Email verification tokens table already exists")
+	}
+
 	return nil
 }
 
