@@ -255,6 +255,7 @@ export interface UserProfileResponse {
   location: string | null;
   has_photo: boolean;
   is_public: boolean;
+  slug?: string | null;
   skills_offered: SkillResponse[];
   skills_wanted: SkillResponse[];
   created_at: string;
@@ -296,6 +297,26 @@ export const users = {
     if (params.page) query.set('page', String(params.page));
     if (params.limit) query.set('limit', String(params.limit));
     return apiRequest<SearchUsersResponse>(`/public/users/search?${query.toString()}`);
+  },
+
+  getBySlug(slug: string) {
+    return apiRequest<UserProfileResponse>(`/u/${encodeURIComponent(slug)}`);
+  },
+
+  updateSlug(slug: string) {
+    return apiRequest<{ slug: string }>('/users/profile/slug', {
+      method: 'PUT',
+      body: JSON.stringify({ slug }),
+    });
+  },
+
+  getReliability(userId: string) {
+    return apiRequest<{
+      qualifies: boolean;
+      successful_swaps: number;
+      reported_no_shows: number;
+      score?: number;
+    }>(`/users/${encodeURIComponent(userId)}/reliability`);
   },
 };
 

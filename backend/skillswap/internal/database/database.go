@@ -716,6 +716,17 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		}
 	}
 
+	// Migration 013: users.slug (Commit 4)
+	if !db.Migrator().HasColumn(&models.User{}, "slug") {
+		if err := db.Exec("ALTER TABLE users ADD COLUMN slug VARCHAR(40)").Error; err != nil {
+			return err
+		}
+		if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_slug ON users(slug) WHERE slug IS NOT NULL").Error; err != nil {
+			return err
+		}
+		log.Println("✓ Added users.slug column + unique index")
+	}
+
 	return nil
 }
 

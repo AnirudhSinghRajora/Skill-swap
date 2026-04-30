@@ -330,3 +330,55 @@ func (h *Handler) GetKeyBackup(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"encrypted_key_backup": backup})
 }
+
+// GetPublicProfileBySlug — GET /api/v1/u/:slug
+func (h *Handler) GetPublicProfileBySlug(c *gin.Context) {
+	slug := c.Param("slug")
+	profile, err := h.userService.GetPublicProfileBySlug(slug)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "profile is private"})
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	c.JSON(http.StatusOK, profile)
+}
+
+type updateSlugRequest struct {
+	Slug string `json:"slug" binding:"required,min=3,max=40"`
+}
+
+// UpdateMySlug — PUT /api/v1/users/profile/slug
+func (h *Handler) UpdateMySlug(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
+		return
+	}
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	var req updateSlugRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.userService.UpdateSlug(userID, req.Slug); err != nil {
+		switch {
+		case errors.Is(err, apperrors.ErrValidation):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		case errors.Is(err, apperrors.ErrConflict):
+			c.JSON(http.StatusConflict, gin.H{"error": "slug already taken", "code": "slug_taken"})
+		case errors.Is(err, apperrors.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		default:
+			response.InternalError(c, err)
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"slug": req.Slug})
+}

@@ -19,12 +19,16 @@ func SetupUserRoutes(api *gin.RouterGroup, userService service.UserService, cfg 
 		public.GET("/users/:id", userHandler.GetPublicProfile)
 	}
 
+	// Public slug-based profile: /api/v1/u/:slug
+	api.GET("/u/:slug", userHandler.GetPublicProfileBySlug)
+
 	// Protected user routes (authentication required)
 	protected := api.Group("/users")
 	protected.Use(middleware.JWTAuth(*cfg))
 	{
 		protected.GET("/profile", userHandler.GetProfile)
 		protected.PUT("/profile", userHandler.UpdateProfile)
+		protected.PUT("/profile/slug", userHandler.UpdateMySlug)
 
 		// E2EE key management
 		protected.PUT("/me/e2ee-keys", userHandler.SetE2EEKeys)

@@ -14,7 +14,9 @@ import (
 type UserService interface {
 	GetProfile(userID uuid.UUID) (*UserProfileResponse, error)
 	GetPublicProfile(userID uuid.UUID) (*UserProfileResponse, error)
+	GetPublicProfileBySlug(slug string) (*UserProfileResponse, error)
 	UpdateProfile(userID uuid.UUID, req *UpdateProfileRequest) error
+	UpdateSlug(userID uuid.UUID, slug string) error
 	SearchUsers(req *SearchUsersRequest) (*SearchUsersResponse, error)
 
 	// E2EE key management
@@ -41,6 +43,7 @@ type UserProfileResponse struct {
 	Location      *string         `json:"location"`
 	HasPhoto      bool            `json:"has_photo"`
 	IsPublic      bool            `json:"is_public"`
+	Slug          *string         `json:"slug,omitempty"`
 	PublicKey     *string         `json:"public_key,omitempty"`
 	HasKeyBackup  bool            `json:"has_key_backup"`
 	SkillsOffered []SkillResponse `json:"skills_offered"`
@@ -94,6 +97,65 @@ func (s *userService) GetPublicProfile(userID uuid.UUID) (*UserProfileResponse, 
 	}
 
 	return s.toUserProfileResponse(user), nil
+}
+
+func (s *userService) GetPublicProfileBySlug(slug string) (*UserProfileResponse, error) {
+	user, err := s.userRepo.GetBySlug(slug)
+	if err != nil {
+		return nil, err
+	}
+	if !user.IsPublic {
+		return nil, fmt.Errorf("user profile is not public: %w", apperrors.ErrForbidden)
+	}
+	return s.toUserProfileResponse(user), nil
+}
+
+var slugReservedSet = map[string]struct{}{
+	"admin": {}, "api": {}, "auth": {}, "about": {}, "browse": {},
+	"dashboard": {}, "login": {}, "signup": {}, "u": {}, "settings": {},
+	"profile": {}, "messages": {}, "notifications": {}, "swaps": {},
+}
+
+func validateSlug(slug string) error {
+	if len(slug) < 3 || len(slug) > 40 {
+		return fmt.Errorf("slug must be 3-40 characters: %w", apperrors.ErrValidation)
+	}
+	if _, reserved := slugReservedSet[slug]; reserved {
+		return fmt.Errorf("slug is reserved: %w", apperrors.ErrValidation)
+	}
+	prevDash := false
+	for i, r := range slug {
+		isLower := r >= 'a' && r <= 'z'
+		isDigit := r >= '0' && r <= '9'
+		isDash := r == '-'
+		if !isLower && !isDigit && !isDash {
+			return fmt.Errorf("slug may contain only a-z, 0-9, and dashes: %w", apperrors.ErrValidation)
+		}
+		if isDash && (i == 0 || i == len(slug)-1) {
+			return fmt.Errorf("slug cannot start or end with a dash: %w", apperrors.ErrValidation)
+		}
+		if isDash && prevDash {
+			return fmt.Errorf("slug cannot contain consecutive dashes: %w", apperrors.ErrValidation)
+		}
+		prevDash = isDash
+	}
+	return nil
+}
+
+func (s *userService) UpdateSlug(userID uuid.UUID, slug string) error {
+	if err := validateSlug(slug); err != nil {
+		return err
+	}
+	// uniqueness check
+	if existing, err := s.userRepo.GetBySlug(slug); err == nil && existing.UserID != userID {
+		return fmt.Errorf("slug already taken: %w", apperrors.ErrConflict)
+	}
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return err
+	}
+	user.Slug = &slug
+	return s.userRepo.Update(user)
 }
 
 func (s *userService) UpdateProfile(userID uuid.UUID, req *UpdateProfileRequest) error {
@@ -187,6 +249,7 @@ func (s *userService) toUserProfileResponse(user *models.User) *UserProfileRespo
 		Location:      user.Location,
 		HasPhoto:      len(user.PhotoData) > 0,
 		IsPublic:      user.IsPublic,
+		Slug:          user.Slug,
 		PublicKey:     user.PublicKey,
 		HasKeyBackup:  user.EncryptedKeyBackup != nil && *user.EncryptedKeyBackup != "",
 		SkillsOffered: skillsOffered,

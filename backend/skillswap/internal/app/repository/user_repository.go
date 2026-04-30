@@ -15,6 +15,7 @@ type UserRepository interface {
 	Create(user *models.User) error
 	GetByID(id uuid.UUID) (*models.User, error)
 	GetByEmail(email string) (*models.User, error)
+	GetBySlug(slug string) (*models.User, error)
 	Update(user *models.User) error
 	Delete(id uuid.UUID) error
 	List(limit, offset int, filters UserFilters) ([]*models.User, int64, error)
@@ -65,6 +66,20 @@ func (r *userRepository) GetByID(id uuid.UUID) (*models.User, error) {
 func (r *userRepository) GetByEmail(email string) (*models.User, error) {
 	var user models.User
 	err := r.db.Where("email = ?", email).First(&user).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("user %w", apperrors.ErrNotFound)
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *userRepository) GetBySlug(slug string) (*models.User, error) {
+	var user models.User
+	err := r.db.Preload("SkillsOffered.Skill").
+		Preload("SkillsWanted.Skill").
+		Where("slug = ?", slug).First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("user %w", apperrors.ErrNotFound)
