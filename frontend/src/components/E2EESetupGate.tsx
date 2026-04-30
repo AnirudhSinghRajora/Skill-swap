@@ -9,10 +9,10 @@
  * route it stays out of the way so the rest of the app — browse, profile,
  * onboarding — remains usable even without keys.
  *
- * After the user submits a passphrase we call `initializeE2EE` which
- * either generates+uploads a fresh pair or restores from the encrypted
- * backup. On success the hook re-fetches `/auth/me` and the gate hides
- * itself.
+ * The user's account password is what we use to derive the local
+ * encryption key (PBKDF2). Normally signup/login already do this in the
+ * background, but if that step ever fails (or the device storage is
+ * cleared) the user lands here and re-enters their account password.
  */
 
 import { useState } from 'react';
@@ -39,18 +39,18 @@ interface CopyForState {
 
 const COPY: Record<'needs-passphrase' | 'needs-restore' | 'mismatch', CopyForState> = {
   'needs-passphrase': {
-    title: 'Set up secure messaging',
-    body: 'Choose a passphrase to encrypt your messages. We use it to derive a key locally — we never see it. If you forget it you will lose access to past conversations.',
+    title: 'Finish setting up secure messaging',
+    body: 'Re-enter your account password so we can generate your encryption keys on this device. This is the same password you used to sign up — we never send it to the server, it only derives a local key.',
     cta: 'Generate keys',
   },
   'needs-restore': {
-    title: 'Unlock secure messaging',
-    body: 'We have an encrypted backup of your keys on this account. Enter your passphrase to restore them on this device.',
+    title: 'Unlock secure messaging on this device',
+    body: 'Enter your account password so we can decrypt the keys backup we have on the server. Same password you sign in with — it stays on this device.',
     cta: 'Restore keys',
   },
   mismatch: {
     title: 'Resync secure messaging',
-    body: 'Your device still has keys, but the server lost them. Re-enter your passphrase so we can rebuild the encrypted backup. Old conversations remain readable on this device.',
+    body: 'Your device still has keys, but the server lost its backup. Re-enter your account password so we can rebuild the encrypted backup. Past conversations remain readable on this device.',
     cta: 'Rebuild backup',
   },
 };
@@ -60,7 +60,7 @@ export function E2EESetupGate() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { status, refresh } = useEnsureE2EE(isAuthenticated);
 
-  const [passphrase, setPassphrase] = useState('');
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,15 +88,15 @@ export function E2EESetupGate() {
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (passphrase.length < 8) {
-      setError('Use at least 8 characters.');
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      await initializeE2EE(passphrase);
-      setPassphrase('');
+      await initializeE2EE(password);
+      setPassword('');
       refresh();
     } catch (e) {
       const message =
@@ -119,19 +119,19 @@ export function E2EESetupGate() {
         <p className="mt-2 text-sm text-muted-foreground">{copy.body}</p>
 
         <div className="mt-5 space-y-2">
-          <Label htmlFor="e2ee-passphrase" className="text-xs uppercase tracking-wide">
-            Passphrase
+          <Label htmlFor="e2ee-password" className="text-xs uppercase tracking-wide">
+            Account password
           </Label>
           <Input
-            id="e2ee-passphrase"
+            id="e2ee-password"
             type="password"
             autoComplete="current-password"
             autoFocus
             minLength={8}
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             disabled={busy}
-            placeholder="At least 8 characters"
+            placeholder="Same password you sign in with"
           />
         </div>
 
@@ -141,7 +141,7 @@ export function E2EESetupGate() {
           </p>
         )}
 
-        <Button type="submit" className="mt-5 w-full" disabled={busy || passphrase.length < 8}>
+        <Button type="submit" className="mt-5 w-full" disabled={busy || password.length < 8}>
           {busy ? 'Working…' : copy.cta}
         </Button>
       </form>
