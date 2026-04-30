@@ -972,6 +972,33 @@ export const sessions = {
       { method: 'PUT' },
     );
   },
+  /** Absolute URL to the ICS file (the endpoint requires the user's JWT). */
+  icsUrl(sessionId: string) {
+    return `${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}/calendar.ics`;
+  },
+  /** Google Calendar deep link for the given session. */
+  googleCalendarUrl(s: SessionResponse, opts?: { title?: string; details?: string }) {
+    const fmt = (iso: string) => new Date(iso).toISOString().replace(/[-:]|\.\d{3}/g, '');
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: opts?.title ?? 'SkillSwap session',
+      dates: `${fmt(s.scheduled_start)}/${fmt(s.scheduled_end)}`,
+      details: opts?.details ?? `Swap ${s.swap_id}`,
+    });
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  },
+  /** Outlook web deep link for the given session. */
+  outlookCalendarUrl(s: SessionResponse, opts?: { title?: string; body?: string }) {
+    const params = new URLSearchParams({
+      path: '/calendar/action/compose',
+      rru: 'addevent',
+      subject: opts?.title ?? 'SkillSwap session',
+      startdt: s.scheduled_start,
+      enddt: s.scheduled_end,
+      body: opts?.body ?? `Swap ${s.swap_id}`,
+    });
+    return `https://outlook.live.com/calendar/0/deeplink/compose?${params.toString()}`;
+  },
 };
 
 export const api = {

@@ -20,6 +20,7 @@ import (
 type SessionService interface {
 	Propose(swapID, proposerID uuid.UUID, start, end time.Time) (*models.Session, error)
 	ListForSwap(swapID, viewerID uuid.UUID) ([]models.Session, error)
+	Get(sessionID, viewerID uuid.UUID) (*models.Session, error)
 	Accept(sessionID, userID uuid.UUID) (*models.Session, error)
 	Cancel(sessionID, userID uuid.UUID) (*models.Session, error)
 	Complete(sessionID, userID uuid.UUID) (*models.Session, error)
@@ -102,6 +103,14 @@ func (s *sessionService) loadAndAuthorize(sessionID, userID uuid.UUID) (*models.
 		return nil, nil, err
 	}
 	return &sess, sw, nil
+}
+
+func (s *sessionService) Get(sessionID, viewerID uuid.UUID) (*models.Session, error) {
+	sess, _, err := s.loadAndAuthorize(sessionID, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	return sess, nil
 }
 
 func (s *sessionService) Accept(sessionID, userID uuid.UUID) (*models.Session, error) {

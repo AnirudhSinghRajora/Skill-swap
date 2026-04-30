@@ -2,11 +2,14 @@ package session
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	appservice "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
+	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
 	resp "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/response"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -128,4 +131,58 @@ func (h *Handler) Cancel(c *gin.Context) {
 // PUT /api/v1/sessions/:id/complete
 func (h *Handler) Complete(c *gin.Context) {
 	h.action(c, func(id, u uuid.UUID) (interface{}, error) { return h.svc.Complete(id, u) })
+}
+
+// GET /api/v1/sessions/:id/calendar.ics
+func (h *Handler) ICS(c *gin.Context) {
+	user, ok := parseUser(c)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		return
+	}
+	sess, err := h.svc.Get(id, user)
+	if err != nil {
+		h.writeErr(c, err)
+		return
+	}
+	body := buildICS(sess)
+	c.Header("Content-Type", "text/calendar; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"skillswap-session-%s.ics\"", sess.SessionID.String()))
+	c.String(http.StatusOK, body)
+}
+
+// icsEscape escapes commas, semicolons, backslashes and newlines per RFC 5545.
+func icsEscape(s string) string {
+	r := strings.NewReplacer("\\", "\\\\", ";", "\\;", ",", "\\,", "\n", "\\n", "\r", "")
+	return r.Replace(s)
+}
+
+func buildICS(sess *models.Session) string {
+	utc := func(t time.Time) string { return t.UTC().Format("20060102T150405Z") }
+	now := utc(time.Now())
+	uid := fmt.Sprintf("session-%s@skillswap", sess.SessionID.String())
+	summary := icsEscape(fmt.Sprintf("SkillSwap session (%s)", sess.Status))
+	desc := icsEscape(fmt.Sprintf("Swap %s - open in SkillSwap to join.", sess.SwapID.String()))
+	lines := []string{
+		"BEGIN:VCALENDAR",
+		"VERSION:2.0",
+		"PRODID:-//SkillSwap//Sessions//EN",
+		"CALSCALE:GREGORIAN",
+		"METHOD:PUBLISH",
+		"BEGIN:VEVENT",
+		"UID:" + uid,
+		"DTSTAMP:" + now,
+		"DTSTART:" + utc(sess.ScheduledStart),
+		"DTEND:" + utc(sess.ScheduledEnd),
+		"SUMMARY:" + summary,
+		"DESCRIPTION:" + desc,
+		"STATUS:" + strings.ToUpper(string(sess.Status)),
+		"END:VEVENT",
+		"END:VCALENDAR",
+	}
+	return strings.Join(lines, "\r\n") + "\r\n"
 }

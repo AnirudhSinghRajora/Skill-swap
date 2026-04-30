@@ -21,8 +21,9 @@ func SetupSessionRoutes(api *gin.RouterGroup, cfg *config.Config, h *session.Han
 	sessions := api.Group("/sessions")
 	sessions.Use(middleware.JWTAuth(*cfg))
 	{
-		sessions.PUT("/:id/accept", h.Accept)     // PUT /api/v1/sessions/:id/accept
-		sessions.PUT("/:id/cancel", h.Cancel)     // PUT /api/v1/sessions/:id/cancel
-		sessions.PUT("/:id/complete", h.Complete) // PUT /api/v1/sessions/:id/complete
+		sessions.PUT("/:id/accept", h.Accept)         // PUT /api/v1/sessions/:id/accept
+		sessions.PUT("/:id/cancel", h.Cancel)         // PUT /api/v1/sessions/:id/cancel
+		sessions.PUT("/:id/complete", h.Complete)     // PUT /api/v1/sessions/:id/complete
+		sessions.GET("/:id/calendar.ics", h.ICS)      // GET /api/v1/sessions/:id/calendar.ics
 	}
 }
