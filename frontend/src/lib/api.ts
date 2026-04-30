@@ -1162,6 +1162,119 @@ export const cohorts = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Topic Q&A (Commit 16)
+// ---------------------------------------------------------------------------
+
+export type VoteTargetKind = 'question' | 'answer';
+
+export interface Question {
+  question_id: string;
+  asker_id: string;
+  skill_id?: string | null;
+  title: string;
+  body: string;
+  upvote_count: number;
+  answer_count: number;
+  accepted_answer_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Answer {
+  answer_id: string;
+  question_id: string;
+  author_id: string;
+  body: string;
+  upvote_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuestionDetail {
+  question: Question;
+  answers: Answer[];
+}
+
+export interface AskQuestionInput {
+  skill_id?: string | null;
+  title: string;
+  body: string;
+}
+
+export interface ListQuestionsQuery {
+  skill_id?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export const questions = {
+  list(query: ListQuestionsQuery = {}) {
+    const sp = new URLSearchParams();
+    if (query.skill_id) sp.set('skill_id', query.skill_id);
+    if (query.q) sp.set('q', query.q);
+    if (query.limit !== undefined) sp.set('limit', String(query.limit));
+    if (query.offset !== undefined) sp.set('offset', String(query.offset));
+    const qs = sp.toString();
+    return apiRequest<Question[]>(`/questions${qs ? `?${qs}` : ''}`);
+  },
+  get(id: string) {
+    return apiRequest<QuestionDetail>(`/questions/${encodeURIComponent(id)}`);
+  },
+  ask(input: AskQuestionInput) {
+    return apiRequest<Question>('/questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+  },
+  update(id: string, title: string, body: string) {
+    return apiRequest<Question>(`/questions/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, body }),
+    });
+  },
+  delete(id: string) {
+    return apiRequest<void>(`/questions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  answer(id: string, body: string) {
+    return apiRequest<Answer>(`/questions/${encodeURIComponent(id)}/answers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body }),
+    });
+  },
+};
+
+export const answers = {
+  update(id: string, body: string) {
+    return apiRequest<Answer>(`/answers/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body }),
+    });
+  },
+  delete(id: string) {
+    return apiRequest<void>(`/answers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  accept(id: string) {
+    return apiRequest<void>(`/answers/${encodeURIComponent(id)}/accept`, { method: 'POST' });
+  },
+};
+
+export const votes = {
+  /** Toggle a vote on a question or answer; returns the new state + count. */
+  toggle(targetKind: VoteTargetKind, targetId: string) {
+    return apiRequest<{ voted: boolean; upvote_count: number }>('/votes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_kind: targetKind, target_id: targetId }),
+    });
+  },
+};
+
 export const api = {
   auth,
   users,
@@ -1180,6 +1293,9 @@ export const api = {
   moderation,
   sessions,
   cohorts,
+  questions,
+  answers,
+  votes,
 };
 
 export { ApiClientError, clearAuth, getAccessToken, setTokens, notifyAuthChange, updateStoredUser, decodeTokenPayload };

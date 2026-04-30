@@ -821,6 +821,32 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		log.Println("✓ Created cohort_sessions table")
 	}
 
+	// Migration 021: questions + answers + votes (Commit 16)
+	if !db.Migrator().HasTable(&models.Question{}) {
+		if err := db.AutoMigrate(&models.Question{}); err != nil {
+			return err
+		}
+		log.Println("✓ Created questions table")
+	}
+	if !db.Migrator().HasTable(&models.Answer{}) {
+		if err := db.AutoMigrate(&models.Answer{}); err != nil {
+			return err
+		}
+		log.Println("✓ Created answers table")
+	}
+	if !db.Migrator().HasTable(&models.Vote{}) {
+		if err := db.AutoMigrate(&models.Vote{}); err != nil {
+			return err
+		}
+		// Composite UNIQUE so a single voter can only have one vote row per
+		// target. Service-layer toggle deletes the row on second click.
+		if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_votes_voter_target
+			ON votes (voter_id, target_kind, target_id)`).Error; err != nil {
+			return err
+		}
+		log.Println("✓ Created votes table + uq_votes_voter_target")
+	}
+
 	return nil
 }
 

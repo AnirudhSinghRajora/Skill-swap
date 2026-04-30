@@ -10,6 +10,7 @@ import (
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/config"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/email"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/moderation"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/qa"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/rating"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/session"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/skill"
@@ -41,6 +42,7 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	moderationService := service.NewModerationService(db)
 	sessionService := service.NewSessionService(db)
 	cohortService := service.NewCohortService(db)
+	qaService := service.NewQAService(db)
 
 	// Video call service (shared by video + cohort handlers)
 	videoService := service.NewVideoService(*cfg)
@@ -55,6 +57,7 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	moderationHandler := moderation.NewHandler(moderationService)
 	sessionHandler := session.NewHandler(sessionService)
 	cohortHandler := cohort.NewHandler(cohortService, videoService)
+	qaHandler := qa.NewHandler(qaService)
 	videoHandler := video.NewHandler(videoService)
 
 	// WebSocket hub — singleton for the lifetime of the application.
@@ -78,6 +81,7 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	SetupModerationRoutes(api, cfg, moderationHandler)
 	SetupSessionRoutes(api, cfg, sessionHandler)
 	SetupCohortRoutes(api, cfg, cohortHandler)
+	SetupQARoutes(api, cfg, qaHandler)
 
 	// WebSocket endpoint — auth is handled inside the upgrade handler
 	// (token passed via query param), so no JWT middleware here.
