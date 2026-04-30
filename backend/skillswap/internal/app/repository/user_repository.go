@@ -30,6 +30,12 @@ type UserFilters struct {
 	IsPublic   *bool
 	Location   string
 	SearchTerm string
+	// Geo: when Lat/Lng/WithinKm provided, restrict to users with non-null
+	// coordinates within haversine distance.
+	Lat       *float64
+	Lng       *float64
+	WithinKm  *float64
+	RemoteOK  *bool // when true, ALSO include users with is_remote_ok=true (OR'd with radius)
 }
 
 type userRepository struct {
@@ -166,6 +172,26 @@ func (r *userRepository) List(limit, offset int, filters UserFilters) ([]*models
 
 	if filters.SearchTerm != "" {
 		query = query.Where("name ILIKE ?", "%"+filters.SearchTerm+"%")
+	}
+
+	// Geo radius (haversine) optionally OR'd with is_remote_ok=true.
+	if filters.Lat != nil && filters.Lng != nil && filters.WithinKm != nil {
+		haversine := "6371 * acos(LEAST(1.0, GREATEST(-1.0, " +
+			"cos(radians(?)) * cos(radians(lat)) * cos(radians(lng) - radians(?)) " +
+			"+ sin(radians(?)) * sin(radians(lat)))))"
+		if filters.RemoteOK != nil && *filters.RemoteOK {
+			query = query.Where(
+				"(lat IS NOT NULL AND lng IS NOT NULL AND "+haversine+" <= ?) OR is_remote_ok = TRUE",
+				*filters.Lat, *filters.Lng, *filters.Lat, *filters.WithinKm,
+			)
+		} else {
+			query = query.Where(
+				"lat IS NOT NULL AND lng IS NOT NULL AND "+haversine+" <= ?",
+				*filters.Lat, *filters.Lng, *filters.Lat, *filters.WithinKm,
+			)
+		}
+	} else if filters.RemoteOK != nil && *filters.RemoteOK {
+		query = query.Where("is_remote_ok = TRUE")
 	}
 
 	// Get total count

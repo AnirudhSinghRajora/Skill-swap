@@ -22,6 +22,9 @@ type User struct {
 	GoogleID           *string        `gorm:"column:google_id;uniqueIndex"`
 	EmailVerified      bool           `gorm:"column:email_verified;default:false"`
 	Slug               *string        `gorm:"column:slug;uniqueIndex"`
+	Lat                *float64       `gorm:"column:lat"`
+	Lng                *float64       `gorm:"column:lng"`
+	IsRemoteOK         bool           `gorm:"column:is_remote_ok;default:true"`
 	PublicKey          *string        `gorm:"column:public_key"`
 	EncryptedKeyBackup *string        `gorm:"column:encrypted_key_backup"`
 	CreatedAt          time.Time      `gorm:"column:created_at;autoCreateTime"`

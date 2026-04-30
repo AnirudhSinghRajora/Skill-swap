@@ -157,6 +157,20 @@ func (h *Handler) SearchUsers(c *gin.Context) {
 		}
 	}
 
+	if v, err := strconv.ParseFloat(c.Query("lat"), 64); err == nil {
+		req.Lat = &v
+	}
+	if v, err := strconv.ParseFloat(c.Query("lng"), 64); err == nil {
+		req.Lng = &v
+	}
+	if v, err := strconv.ParseFloat(c.Query("within_km"), 64); err == nil && v > 0 {
+		req.WithinKm = &v
+	}
+	if s := c.Query("remote_ok"); s != "" {
+		b := s == "1" || s == "true"
+		req.RemoteOK = &b
+	}
+
 	result, err := h.userService.SearchUsers(&req)
 	if err != nil {
 		response.InternalError(c, err)

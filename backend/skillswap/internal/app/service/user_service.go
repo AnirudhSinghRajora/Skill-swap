@@ -57,16 +57,23 @@ type SkillResponse struct {
 }
 
 type UpdateProfileRequest struct {
-	Name     *string `json:"name,omitempty"`
-	Location *string `json:"location,omitempty"`
-	IsPublic *bool   `json:"is_public,omitempty"`
+	Name       *string  `json:"name,omitempty"`
+	Location   *string  `json:"location,omitempty"`
+	IsPublic   *bool    `json:"is_public,omitempty"`
+	Lat        *float64 `json:"lat,omitempty"`
+	Lng        *float64 `json:"lng,omitempty"`
+	IsRemoteOK *bool    `json:"is_remote_ok,omitempty"`
 }
 
 type SearchUsersRequest struct {
-	Location   string `json:"location,omitempty"`
-	SearchTerm string `json:"search_term,omitempty"`
-	Page       int    `json:"page"`
-	Limit      int    `json:"limit"`
+	Location   string   `json:"location,omitempty"`
+	SearchTerm string   `json:"search_term,omitempty"`
+	Page       int      `json:"page"`
+	Limit      int      `json:"limit"`
+	Lat        *float64 `json:"lat,omitempty"`
+	Lng        *float64 `json:"lng,omitempty"`
+	WithinKm   *float64 `json:"within_km,omitempty"`
+	RemoteOK   *bool    `json:"remote_ok,omitempty"`
 }
 
 type SearchUsersResponse struct {
@@ -180,6 +187,15 @@ func (s *userService) UpdateProfile(userID uuid.UUID, req *UpdateProfileRequest)
 	if req.IsPublic != nil {
 		user.IsPublic = *req.IsPublic
 	}
+	if req.Lat != nil {
+		user.Lat = req.Lat
+	}
+	if req.Lng != nil {
+		user.Lng = req.Lng
+	}
+	if req.IsRemoteOK != nil {
+		user.IsRemoteOK = *req.IsRemoteOK
+	}
 
 	return s.userRepo.Update(user)
 }
@@ -201,6 +217,10 @@ func (s *userService) SearchUsers(req *SearchUsersRequest) (*SearchUsersResponse
 		IsPublic:   boolPtr(true), // Only show public profiles
 		Location:   req.Location,
 		SearchTerm: req.SearchTerm,
+		Lat:        req.Lat,
+		Lng:        req.Lng,
+		WithinKm:   req.WithinKm,
+		RemoteOK:   req.RemoteOK,
 	}
 
 	users, total, err := s.userRepo.List(req.Limit, offset, filters)

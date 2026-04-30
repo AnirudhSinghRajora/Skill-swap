@@ -763,6 +763,20 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		log.Println("✓ Added user_skills_wanted.level")
 	}
 
+	// Migration 016: geo + remote toggle (Commit 7)
+	for col, ddl := range map[string]string{
+		"lat":          "ALTER TABLE users ADD COLUMN lat DOUBLE PRECISION",
+		"lng":          "ALTER TABLE users ADD COLUMN lng DOUBLE PRECISION",
+		"is_remote_ok": "ALTER TABLE users ADD COLUMN is_remote_ok BOOLEAN NOT NULL DEFAULT TRUE",
+	} {
+		if !db.Migrator().HasColumn(&models.User{}, col) {
+			if err := db.Exec(ddl).Error; err != nil {
+				return err
+			}
+			log.Printf("✓ Added users.%s", col)
+		}
+	}
+
 	return nil
 }
 

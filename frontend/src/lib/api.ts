@@ -283,19 +283,40 @@ export const users = {
     return apiRequest<UserProfileResponse>(`/public/users/${encodeURIComponent(userId)}`);
   },
 
-  updateProfile(data: { name?: string; email?: string; location?: string; is_public?: boolean }) {
+  updateProfile(data: {
+    name?: string;
+    email?: string;
+    location?: string;
+    is_public?: boolean;
+    lat?: number | null;
+    lng?: number | null;
+    is_remote_ok?: boolean;
+  }) {
     return apiRequest<{ message: string }>('/users/profile', {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   },
 
-  searchPublic(params: { search_term?: string; location?: string; page?: number; limit?: number }) {
+  searchPublic(params: {
+    search_term?: string;
+    location?: string;
+    page?: number;
+    limit?: number;
+    lat?: number;
+    lng?: number;
+    within_km?: number;
+    remote_ok?: boolean;
+  }) {
     const query = new URLSearchParams();
     if (params.search_term) query.set('search_term', params.search_term);
     if (params.location) query.set('location', params.location);
     if (params.page) query.set('page', String(params.page));
     if (params.limit) query.set('limit', String(params.limit));
+    if (params.lat !== undefined) query.set('lat', String(params.lat));
+    if (params.lng !== undefined) query.set('lng', String(params.lng));
+    if (params.within_km !== undefined) query.set('within_km', String(params.within_km));
+    if (params.remote_ok) query.set('remote_ok', 'true');
     return apiRequest<SearchUsersResponse>(`/public/users/search?${query.toString()}`);
   },
 
