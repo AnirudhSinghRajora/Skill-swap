@@ -378,6 +378,20 @@ export const skills = {
     });
   },
 
+  setOfferedLevel(skillId: string, level: 1 | 2 | 3 | 4) {
+    return apiRequest<{ skill_id: string; level: number }>(
+      `/users/skills/offered/${encodeURIComponent(skillId)}/level`,
+      { method: 'PATCH', body: JSON.stringify({ level }) },
+    );
+  },
+
+  setWantedLevel(skillId: string, level: 1 | 2 | 3 | 4) {
+    return apiRequest<{ skill_id: string; level: number }>(
+      `/users/skills/wanted/${encodeURIComponent(skillId)}/level`,
+      { method: 'PATCH', body: JSON.stringify({ level }) },
+    );
+  },
+
   listCategories() {
     return apiRequest<
       Array<{

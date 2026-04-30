@@ -27,10 +27,12 @@ func SetupSkillRoutes(api *gin.RouterGroup, cfg *config.Config, skillHandler *sk
 		userSkills.GET("/offered", skillHandler.GetUserOfferedSkills)      // GET /api/v1/users/skills/offered
 		userSkills.POST("/offered", skillHandler.AddOfferedSkill)          // POST /api/v1/users/skills/offered
 		userSkills.DELETE("/offered/:id", skillHandler.RemoveOfferedSkill) // DELETE /api/v1/users/skills/offered/:id
+		userSkills.PATCH("/offered/:id/level", skillHandler.SetOfferedLevel)
 
 		// Wanted skills
 		userSkills.GET("/wanted", skillHandler.GetUserWantedSkills)      // GET /api/v1/users/skills/wanted
 		userSkills.POST("/wanted", skillHandler.AddWantedSkill)          // POST /api/v1/users/skills/wanted
 		userSkills.DELETE("/wanted/:id", skillHandler.RemoveWantedSkill) // DELETE /api/v1/users/skills/wanted/:id
+		userSkills.PATCH("/wanted/:id/level", skillHandler.SetWantedLevel)
 	}
 }

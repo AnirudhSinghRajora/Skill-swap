@@ -23,6 +23,10 @@ type SkillService interface {
 	ResolveOrCreate(name string) (*models.Skill, error)
 	ListCategories() ([]models.SkillCategory, error)
 
+	// Proficiency levels
+	SetOfferedLevel(userID, skillID uuid.UUID, level int16) error
+	SetWantedLevel(userID, skillID uuid.UUID, level int16) error
+
 	// User skill management
 	AddOfferedSkill(userID, skillID uuid.UUID) error
 	RemoveOfferedSkill(userID, skillID uuid.UUID) error
@@ -145,6 +149,7 @@ func (s *skillService) AddOfferedSkill(userID, skillID uuid.UUID) error {
 	userSkill := &models.UserSkillOffered{
 		UserID:  userID,
 		SkillID: skillID,
+		Level:   2,
 	}
 
 	return s.db.Create(userSkill).Error
@@ -182,6 +187,7 @@ func (s *skillService) AddWantedSkill(userID, skillID uuid.UUID) error {
 	userSkill := &models.UserSkillWanted{
 		UserID:  userID,
 		SkillID: skillID,
+		Level:   2,
 	}
 
 	return s.db.Create(userSkill).Error
@@ -283,4 +289,38 @@ func (s *skillService) ListCategories() ([]models.SkillCategory, error) {
 	var cats []models.SkillCategory
 	err := s.db.Order("sort_order ASC, name ASC").Find(&cats).Error
 	return cats, err
+}
+
+// SetOfferedLevel updates the proficiency level on an existing offered skill.
+func (s *skillService) SetOfferedLevel(userID, skillID uuid.UUID, level int16) error {
+	if level < 1 || level > 4 {
+		return fmt.Errorf("level must be 1-4: %w", apperrors.ErrValidation)
+	}
+	res := s.db.Model(&models.UserSkillOffered{}).
+		Where("user_id = ? AND skill_id = ?", userID, skillID).
+		Update("level", level)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return fmt.Errorf("offered skill not found: %w", apperrors.ErrNotFound)
+	}
+	return nil
+}
+
+// SetWantedLevel updates the proficiency level on an existing wanted skill.
+func (s *skillService) SetWantedLevel(userID, skillID uuid.UUID, level int16) error {
+	if level < 1 || level > 4 {
+		return fmt.Errorf("level must be 1-4: %w", apperrors.ErrValidation)
+	}
+	res := s.db.Model(&models.UserSkillWanted{}).
+		Where("user_id = ? AND skill_id = ?", userID, skillID).
+		Update("level", level)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return fmt.Errorf("wanted skill not found: %w", apperrors.ErrNotFound)
+	}
+	return nil
 }

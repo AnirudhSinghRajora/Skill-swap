@@ -573,3 +573,79 @@ CategoryID: c.CategoryID.String(),
 	}
 	c.JSON(http.StatusOK, out)
 }
+
+// SetOfferedLevel — PATCH /api/v1/users/skills/offered/:id/level body {level}
+func (h *Handler) SetOfferedLevel(c *gin.Context) {
+	userIDStr, ok := c.Get("user_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthenticated"})
+		return
+	}
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid user id"})
+		return
+	}
+	skillID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid skill id"})
+		return
+	}
+	var req struct {
+		Level int16 "json:\"level\" binding:\"required,min=1,max=4\""
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if err := h.skillService.SetOfferedLevel(userID, skillID, req.Level); err != nil {
+		switch {
+		case errors.Is(err, apperrors.ErrValidation):
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		case errors.Is(err, apperrors.ErrNotFound):
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "offered skill not found"})
+		default:
+			resp.InternalError(c, err)
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"skill_id": skillID.String(), "level": req.Level})
+}
+
+// SetWantedLevel — PATCH /api/v1/users/skills/wanted/:id/level body {level}
+func (h *Handler) SetWantedLevel(c *gin.Context) {
+	userIDStr, ok := c.Get("user_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthenticated"})
+		return
+	}
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid user id"})
+		return
+	}
+	skillID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid skill id"})
+		return
+	}
+	var req struct {
+		Level int16 "json:\"level\" binding:\"required,min=1,max=4\""
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if err := h.skillService.SetWantedLevel(userID, skillID, req.Level); err != nil {
+		switch {
+		case errors.Is(err, apperrors.ErrValidation):
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		case errors.Is(err, apperrors.ErrNotFound):
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "wanted skill not found"})
+		default:
+			resp.InternalError(c, err)
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"skill_id": skillID.String(), "level": req.Level})
+}

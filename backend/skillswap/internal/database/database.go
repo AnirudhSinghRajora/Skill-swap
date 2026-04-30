@@ -749,6 +749,20 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		log.Println("✓ Added skills.category_id")
 	}
 
+	// Migration 015: proficiency level columns (Commit 6)
+	if !db.Migrator().HasColumn(&models.UserSkillOffered{}, "level") {
+		if err := db.Exec("ALTER TABLE user_skills_offered ADD COLUMN level SMALLINT NOT NULL DEFAULT 2").Error; err != nil {
+			return err
+		}
+		log.Println("✓ Added user_skills_offered.level")
+	}
+	if !db.Migrator().HasColumn(&models.UserSkillWanted{}, "level") {
+		if err := db.Exec("ALTER TABLE user_skills_wanted ADD COLUMN level SMALLINT NOT NULL DEFAULT 2").Error; err != nil {
+			return err
+		}
+		log.Println("✓ Added user_skills_wanted.level")
+	}
+
 	return nil
 }
 
