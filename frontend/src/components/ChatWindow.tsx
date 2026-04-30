@@ -34,7 +34,7 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
   const [showVideoCall, setShowVideoCall] = useState(false);
 
   // ── E2EE key derivation ────────────────────────────────────────────────
-  const { keyPair, isReady: localKeysReady } = useE2EEKeys();
+  const { keyPair, isReady: localKeysReady } = useE2EEKeys(user?.user_id);
   // Fetch conversation details early so we can derive the shared key
   const { data: convo, isLoading: convoLoading } = useQuery({
     queryKey: ['conversation-detail', conversationId],

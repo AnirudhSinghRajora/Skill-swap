@@ -23,7 +23,11 @@ export interface E2EEKeyPair {
 const DB_NAME = 'e2ee-keystore';
 const DB_VERSION = 1;
 const STORE_NAME = 'keys';
-const RECORD_KEY = 'identity';
+const LEGACY_RECORD_KEY = 'identity';
+
+function recordKeyForUser(userId?: string): string {
+  return userId ? `identity:${userId}` : LEGACY_RECORD_KEY;
+}
 
 function openDB(): Promise<IDBDatabase> {
   if (typeof globalThis.window !== 'undefined' && !globalThis.window.isSecureContext) {
@@ -58,8 +62,8 @@ export function keyPairFromSecretKey(secretKey: Uint8Array): E2EEKeyPair {
   return { publicKey: kp.publicKey, secretKey: kp.secretKey };
 }
 
-/** Store a key pair in IndexedDB. */
-export async function storeKeyPair(kp: E2EEKeyPair): Promise<void> {
+/** Store a key pair in IndexedDB, scoped to the authenticated user. */
+export async function storeKeyPair(kp: E2EEKeyPair, userId?: string): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -70,7 +74,7 @@ export async function storeKeyPair(kp: E2EEKeyPair): Promise<void> {
         publicKey: Array.from(kp.publicKey),
         secretKey: Array.from(kp.secretKey),
       },
-      RECORD_KEY,
+      recordKeyForUser(userId),
     );
     tx.oncomplete = () => {
       db.close();
@@ -83,14 +87,14 @@ export async function storeKeyPair(kp: E2EEKeyPair): Promise<void> {
   });
 }
 
-/** Retrieve the stored key pair, or null if none exists. */
-export async function getStoredKeyPair(): Promise<E2EEKeyPair | null> {
+/** Retrieve the stored key pair for a user, or null if none exists. */
+export async function getStoredKeyPair(userId?: string): Promise<E2EEKeyPair | null> {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
-      const request = store.get(RECORD_KEY);
+      const request = store.get(recordKeyForUser(userId));
       request.onsuccess = () => {
         db.close();
         const record = request.result;
@@ -114,13 +118,13 @@ export async function getStoredKeyPair(): Promise<E2EEKeyPair | null> {
   }
 }
 
-/** Delete the stored key pair (used on account deletion or key rotation). */
-export async function clearStoredKeyPair(): Promise<void> {
+/** Delete the stored key pair for a user (used on account deletion or key rotation). */
+export async function clearStoredKeyPair(userId?: string): Promise<void> {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
-      tx.objectStore(STORE_NAME).delete(RECORD_KEY);
+      tx.objectStore(STORE_NAME).delete(recordKeyForUser(userId));
       tx.oncomplete = () => {
         db.close();
         resolve();

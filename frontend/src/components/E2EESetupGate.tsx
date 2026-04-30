@@ -4,15 +4,13 @@
  * E2EESetupGate — overlay modal that finishes E2EE setup when the
  * `useEnsureE2EE` hook reports it is incomplete.
  *
- * It is mounted once in the root layout but only appears on chat-bearing
- * routes (currently /messages and /swaps). For every other
- * route it stays out of the way so the rest of the app — browse, profile,
- * onboarding — remains usable even without keys.
+ * It is mounted once in the root layout but only appears on authenticated
+ * onboarding and chat routes. Browse/public profile routes stay usable even
+ * without keys.
  *
- * The user's account password is what we use to derive the local
- * encryption key (PBKDF2). Normally signup/login already do this in the
- * background, but if that step ever fails (or the device storage is
- * cleared) the user lands here and re-enters their account password.
+ * Password auth normally initializes keys before onboarding completes. This
+ * gate is the recovery path for old accounts, OAuth accounts, and cleared
+ * device storage.
  */
 
 import { useState } from 'react';
@@ -24,10 +22,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-const GATED_PATH_PREFIXES = ['/messages', '/swaps'];
+const GATED_PATH_PREFIXES = ['/dashboard', '/messages', '/swaps'];
 
 function shouldGate(pathname: string | null): boolean {
   if (!pathname) return false;
+  if (pathname === '/profile') return true;
   return GATED_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
@@ -40,25 +39,25 @@ interface CopyForState {
 const COPY: Record<'needs-passphrase' | 'needs-restore' | 'mismatch', CopyForState> = {
   'needs-passphrase': {
     title: 'Finish setting up secure messaging',
-    body: 'Re-enter your account password so we can generate your encryption keys on this device. This is the same password you used to sign up — we never send it to the server, it only derives a local key.',
+    body: 'For email/password accounts, use the password you signed up with. For Google-only accounts, choose a secure messaging password now and keep it safe. We never send it to the server.',
     cta: 'Generate keys',
   },
   'needs-restore': {
     title: 'Unlock secure messaging on this device',
-    body: 'Enter your account password so we can decrypt the keys backup we have on the server. Same password you sign in with — it stays on this device.',
+    body: 'Enter the password used for your secure messaging backup. For email/password accounts, this is your account password. It stays on this device.',
     cta: 'Restore keys',
   },
   mismatch: {
     title: 'Resync secure messaging',
-    body: 'Your device still has keys, but the server lost its backup. Re-enter your account password so we can rebuild the encrypted backup. Past conversations remain readable on this device.',
+    body: 'Your device still has keys, but the server is missing its backup. Re-enter the password for this account so we can rebuild the encrypted backup.',
     cta: 'Rebuild backup',
   },
 };
 
 export function E2EESetupGate() {
   const pathname = usePathname();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const { status, refresh } = useEnsureE2EE(isAuthenticated);
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { status, refresh } = useEnsureE2EE(isAuthenticated, user?.user_id);
 
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -66,6 +65,7 @@ export function E2EESetupGate() {
 
   if (authLoading) return null;
   if (!isAuthenticated) return null;
+  if (!user?.user_id) return null;
   if (!shouldGate(pathname)) return null;
   if (status.kind === 'loading' || status.kind === 'ok' || status.kind === 'unauthenticated')
     return null;
@@ -95,7 +95,7 @@ export function E2EESetupGate() {
     setBusy(true);
     setError(null);
     try {
-      await initializeE2EE(password);
+      await initializeE2EE(password, user.user_id);
       setPassword('');
       refresh();
     } catch (e) {
@@ -120,7 +120,7 @@ export function E2EESetupGate() {
 
         <div className="mt-5 space-y-2">
           <Label htmlFor="e2ee-password" className="text-xs uppercase tracking-wide">
-            Account password
+            Password
           </Label>
           <Input
             id="e2ee-password"
@@ -131,7 +131,7 @@ export function E2EESetupGate() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={busy}
-            placeholder="Same password you sign in with"
+            placeholder="Account or secure messaging password"
           />
         </div>
 

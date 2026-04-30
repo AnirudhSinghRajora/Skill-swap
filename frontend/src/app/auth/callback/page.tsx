@@ -7,11 +7,9 @@ import { setTokens, notifyAuthChange, decodeTokenPayload } from '@/lib/api';
 /**
  * Google OAuth callback.
  *
- * E2EE keys are NOT initialized here — OAuth users have no plaintext
- * password client-side, so we cannot derive the PBKDF2 key for the
- * encrypted private-key backup. The `<E2EESetupGate />` mounted in the
- * root layout will prompt the user for a passphrase the first time they
- * open a chat-bearing route.
+ * E2EE keys are NOT initialized here because OAuth does not give us a
+ * plaintext password. The root `<E2EESetupGate />` blocks onboarding routes
+ * until the user creates or enters their secure messaging password.
  */
 function CallbackHandler() {
 	const router = useRouter();

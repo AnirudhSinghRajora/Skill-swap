@@ -1,16 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  generateKeyPair,
-  keyPairFromSecretKey,
-  storeKeyPair,
-  getStoredKeyPair,
-  encodePublicKey,
-  type E2EEKeyPair,
-} from '@/lib/e2ee/keys';
-import { encryptKeyBackup, decryptKeyBackup } from '@/lib/e2ee/backup';
-import { e2eeKeys as e2eeApi } from '@/lib/api';
+import { useState, useEffect, useCallback } from 'react';
+import { getStoredKeyPair, type E2EEKeyPair } from '@/lib/e2ee/keys';
+import { initializeE2EE } from '@/lib/e2ee/init';
 
 interface E2EEKeysState {
   /** Whether the key initialisation flow has completed (success or fail). */
@@ -20,11 +12,11 @@ interface E2EEKeysState {
 }
 
 /**
- * Hook that manages the E2EE key lifecycle:
+ * Hook that reads the current user's local E2EE identity key:
  *
- * 1. On mount — try to load the key pair from IndexedDB.
- * 2. If absent + password provided — try to restore from server backup.
- * 3. If no backup exists — generate a fresh key pair, create backup, upload both.
+ * 1. On mount — try to load the user-scoped key pair from IndexedDB.
+ * 2. If absent + password provided — delegate to initializeE2EE(), which
+ *    reconciles local storage with the server public key and backup state.
  *
  * The password is only needed once per device:
  *   - On **login**: to decrypt the server-side backup.
@@ -33,13 +25,16 @@ interface E2EEKeysState {
  * After the key pair is in IndexedDB, subsequent mounts (page navigations) load
  * the key from local storage without needing the password again.
  */
-export function useE2EEKeys(password?: string) {
+export function useE2EEKeys(userId?: string, password?: string) {
   const [state, setState] = useState<E2EEKeysState>({ isReady: false, keyPair: null });
-  const initRef = useRef(false);
 
   const initKeys = useCallback(async () => {
-    // 1. Check IndexedDB first
-    const local = await getStoredKeyPair();
+    if (!userId) {
+      setState({ isReady: true, keyPair: null });
+      return;
+    }
+
+    const local = await getStoredKeyPair(userId);
     if (local) {
       setState({ isReady: true, keyPair: local });
       return;
@@ -51,40 +46,12 @@ export function useE2EEKeys(password?: string) {
       return;
     }
 
-    // 2. Try to restore from server backup
-    try {
-      const { encrypted_key_backup } = await e2eeApi.getBackup();
-      if (encrypted_key_backup) {
-        const secretKey = await decryptKeyBackup(encrypted_key_backup, password);
-        if (secretKey) {
-          const restored = keyPairFromSecretKey(secretKey);
-          await storeKeyPair(restored);
-          setState({ isReady: true, keyPair: restored });
-          return;
-        }
-        // Decryption failed — password mismatch (shouldn't happen if using account password).
-        // Fall through to generate new keys.
-      }
-    } catch {
-      // 404 or network error — no backup on server, fall through
-    }
-
-    // 3. Generate new key pair, back up, and upload
-    const fresh = generateKeyPair();
-    const backup = await encryptKeyBackup(fresh.secretKey, password);
-
-    await e2eeApi.upload({
-      public_key: encodePublicKey(fresh.publicKey),
-      encrypted_key_backup: backup,
-    });
-
-    await storeKeyPair(fresh);
-    setState({ isReady: true, keyPair: fresh });
-  }, [password]);
+    await initializeE2EE(password, userId);
+    const refreshed = await getStoredKeyPair(userId);
+    setState({ isReady: true, keyPair: refreshed });
+  }, [password, userId]);
 
   useEffect(() => {
-    if (initRef.current) return;
-    initRef.current = true;
     initKeys().catch(() => {
       setState({ isReady: true, keyPair: null });
     });
@@ -95,7 +62,8 @@ export function useE2EEKeys(password?: string) {
     if (typeof window === 'undefined') return;
 
     const onKeysReady = async () => {
-      const local = await getStoredKeyPair();
+      if (!userId) return;
+      const local = await getStoredKeyPair(userId);
       if (local) {
         setState({ isReady: true, keyPair: local });
       }
@@ -103,7 +71,7 @@ export function useE2EEKeys(password?: string) {
 
     window.addEventListener('e2ee-keys-ready', onKeysReady);
     return () => window.removeEventListener('e2ee-keys-ready', onKeysReady);
-  }, []);
+  }, [userId]);
 
   return state;
 }

@@ -9,16 +9,16 @@
  *
  *   - `ok`               — local keys present and server agrees. Nothing to do.
  *   - `needs-passphrase` — server has no public key, no local keys either.
- *                          The user must supply a passphrase so we can
+ *                          The user must supply a password so we can
  *                          generate + upload a fresh pair (first-time
  *                          OAuth signup, or a password user whose initial
  *                          upload silently failed).
  *   - `needs-restore`    — server has a backup but the device has no local
- *                          keys yet. Prompt for passphrase to decrypt the
+ *                          keys yet. Prompt for a password to decrypt the
  *                          backup (cross-device login).
  *   - `mismatch`         — local keys exist but the server forgot us
- *                          (backup wiped, public_key cleared). Prompt for
- *                          passphrase to rebuild the backup; we keep the
+ *                          (backup wiped, public_key cleared). Prompt for a
+ *                          password to rebuild the backup; we keep the
  *                          existing identity so old conversations remain
  *                          decryptable.
  *
@@ -28,8 +28,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { auth as authApi } from '@/lib/api';
-import { getStoredKeyPair } from '@/lib/e2ee/keys';
+import { auth as authApi, e2eeKeys as e2eeApi } from '@/lib/api';
+import { encodePublicKey, getStoredKeyPair } from '@/lib/e2ee/keys';
 
 export type E2EEStatus =
   | { kind: 'loading' }
@@ -45,7 +45,7 @@ interface EnsureE2EEResult {
   refresh: () => void;
 }
 
-export function useEnsureE2EE(isAuthenticated: boolean): EnsureE2EEResult {
+export function useEnsureE2EE(isAuthenticated: boolean, userId?: string): EnsureE2EEResult {
   const [status, setStatus] = useState<E2EEStatus>({ kind: 'loading' });
   const [tick, setTick] = useState(0);
 
@@ -57,20 +57,47 @@ export function useEnsureE2EE(isAuthenticated: boolean): EnsureE2EEResult {
       return;
     }
 
+    if (!userId) {
+      setStatus({ kind: 'loading' });
+      return;
+    }
+
     let cancelled = false;
     setStatus({ kind: 'loading' });
 
     (async () => {
       try {
-        const [me, local] = await Promise.all([authApi.me(), getStoredKeyPair()]);
+        const me = await authApi.me();
+        if (me.user_id !== userId) {
+          throw new Error('Authenticated user changed while checking secure messaging.');
+        }
+
+        const [serverPublicKey, local] = await Promise.all([
+          me.has_public_key
+            ? e2eeApi.getPublicKey(userId).then((resp) => resp.public_key || null)
+            : Promise.resolve(null),
+          getStoredKeyPair(userId),
+        ]);
         if (cancelled) return;
 
-        if (local && me.has_public_key) {
+        if (local && serverPublicKey && encodePublicKey(local.publicKey) === serverPublicKey) {
           setStatus({ kind: 'ok' });
           return;
         }
-        if (local && !me.has_public_key) {
+        if (local && serverPublicKey) {
+          setStatus({ kind: 'needs-restore' });
+          return;
+        }
+        if (local && !serverPublicKey) {
           setStatus({ kind: 'mismatch' });
+          return;
+        }
+        if (!local && serverPublicKey && !me.has_key_backup) {
+          setStatus({
+            kind: 'error',
+            message:
+              'Secure messaging is set up for this account, but no encrypted backup is available on this device.',
+          });
           return;
         }
         if (!local && me.has_key_backup) {
@@ -88,7 +115,7 @@ export function useEnsureE2EE(isAuthenticated: boolean): EnsureE2EEResult {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, tick]);
+  }, [isAuthenticated, tick, userId]);
 
   // Re-evaluate when initializeE2EE() finishes elsewhere.
   useEffect(() => {

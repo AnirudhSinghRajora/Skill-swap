@@ -6,8 +6,9 @@ import { Label } from '@/components/ui/label';
 import { SiGoogle } from 'react-icons/si';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import api, { setTokens, notifyAuthChange, ApiClientError } from '@/lib/api';
-import { initializeE2EE, E2EERestoreError } from '@/lib/e2ee/init';
+import api, { ApiClientError } from '@/lib/api';
+import { E2EERestoreError } from '@/lib/e2ee/init';
+import { completePasswordAuthWithE2EE } from '@/lib/e2ee/auth';
 
 interface UserDataType {
   email: string;
@@ -28,12 +29,8 @@ export function LoginForm({ className, ...props }: React.ComponentProps<'div'>) 
     try {
       const data = await api.auth.login(userData.email, userData.password);
 
-      setTokens(data.access_token, data.refresh_token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      notifyAuthChange();
-
       try {
-        await initializeE2EE(userData.password);
+        await completePasswordAuthWithE2EE(data, userData.password);
       } catch (e) {
         const msg =
           e instanceof E2EERestoreError

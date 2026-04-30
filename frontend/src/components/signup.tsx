@@ -6,8 +6,8 @@ import { Label } from '@/components/ui/label';
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Circle } from 'lucide-react';
-import api, { setTokens, notifyAuthChange, ApiClientError } from '@/lib/api';
-import { initializeE2EE } from '@/lib/e2ee/init';
+import api, { ApiClientError } from '@/lib/api';
+import { completePasswordAuthWithE2EE } from '@/lib/e2ee/auth';
 
 interface UserDataType {
   name: string;
@@ -48,13 +48,10 @@ export function SignupForm({ className, ...props }: React.ComponentProps<'div'>)
         password: userData.password,
       });
 
-      setTokens(data.access_token, data.refresh_token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      notifyAuthChange();
-
       try {
-        await initializeE2EE(userData.password);
-      } catch {
+        await completePasswordAuthWithE2EE(data, userData.password);
+      } catch (e) {
+        console.error('E2EE setup failed after signup', e);
         setError('Account created, but secure messaging setup failed. Please sign in again to retry.');
         return;
       }
