@@ -34,7 +34,7 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
   const [showVideoCall, setShowVideoCall] = useState(false);
 
   // ── E2EE key derivation ────────────────────────────────────────────────
-  const { keyPair } = useE2EEKeys();
+  const { keyPair, isReady: localKeysReady } = useE2EEKeys();
   // Fetch conversation details early so we can derive the shared key
   const { data: convo, isLoading: convoLoading } = useQuery({
     queryKey: ['conversation-detail', conversationId],
@@ -42,7 +42,14 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
     enabled: !!conversationId,
   });
   const otherUserId = convo?.other_user?.user_id;
-  const { sharedKey } = useConversationKeys(keyPair, otherUserId);
+  const { sharedKey, isReady: sharedKeyReady } = useConversationKeys(keyPair, otherUserId);
+
+  const secureChatReady = !!sharedKey;
+  const secureChatBlockedReason = !localKeysReady
+    ? 'Setting up your encryption keys...'
+    : !sharedKeyReady
+      ? 'Establishing secure channel...'
+      : 'Secure chat unavailable. The other user may not have encryption keys yet.';
 
   const {
     messages,
@@ -143,6 +150,11 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
                   End-to-end encrypted
                 </p>
               )}
+              {!sharedKey && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                  {secureChatBlockedReason}
+                </p>
+              )}
             </>
           )}
         </div>
@@ -215,6 +227,8 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
         }}
         onTyping={emitTyping}
         sharedKey={sharedKey}
+        disabled={!secureChatReady}
+        placeholder={secureChatReady ? 'Type a message…' : secureChatBlockedReason}
       />
     </div>
   );

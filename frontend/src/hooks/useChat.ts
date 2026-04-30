@@ -241,12 +241,17 @@ export function useChat(conversationId: string | null, sharedKey: Uint8Array | n
       const cid = conversationIdRef.current;
       if (!cid || !user) return;
 
+      const key = sharedKeyRef.current;
+      if (!key) {
+        toast.error('Secure channel is not ready. Cannot send unencrypted messages.');
+        return;
+      }
+
       const tempId = crypto.randomUUID();
 
-      // Encrypt content if we have a shared key
-      const key = sharedKeyRef.current;
-      const isEncrypted = !!key;
-      const wireContent = key ? encrypt(content, key) : content;
+      // Strict mode: always encrypt before transport.
+      const isEncrypted = true;
+      const wireContent = encrypt(content, key);
 
       const optimistic: MessageType = {
         message_id: tempId,

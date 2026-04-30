@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { e2eeKeys as e2eeApi } from '@/lib/api';
 import { decodePublicKey } from '@/lib/e2ee/keys';
 import { deriveSharedKey } from '@/lib/e2ee/crypto';
@@ -32,7 +32,6 @@ export function useConversationKeys(
     sharedKey: null,
     isReady: false,
   });
-  const initRef = useRef(false);
 
   useEffect(() => {
     if (!myKeyPair || !otherUserId) {
@@ -40,15 +39,14 @@ export function useConversationKeys(
       return;
     }
 
+    setState({ sharedKey: null, isReady: false });
+
     // Check cache first
     const cached = sharedKeyCache.get(otherUserId);
     if (cached) {
       setState({ sharedKey: cached, isReady: true });
       return;
     }
-
-    if (initRef.current) return;
-    initRef.current = true;
 
     let cancelled = false;
 

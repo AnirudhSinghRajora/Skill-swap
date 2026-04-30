@@ -213,30 +213,28 @@ export function ChatInput({
 
         const key = sharedKeyRef.current;
 
-        if (key) {
-          // Encrypted upload: encrypt the compressed bytes, upload as blob
-          const plainBytes = new Uint8Array(await compressed.arrayBuffer());
-          const encryptedBytes = encryptBinary(plainBytes, key);
-          const encryptedBlob = new Blob([encryptedBytes], { type: 'application/octet-stream' });
-
-          const res = await api.chatImages.upload(encryptedBlob, true);
-          // Insert as an actual TipTap image node. Raw insertContent can be serialized
-          // as text in some cases when src is omitted.
-          editor
-            .chain()
-            .focus()
-            .setImage({
-              src: 'encrypted-image',
-              alt: 'Encrypted image',
-              encryptedImageId: res.image_id,
-            } as unknown as { src: string; alt: string; encryptedImageId: string })
-            .run();
-        } else {
-          // Plaintext upload: existing behavior
-          const res = await api.chatImages.upload(compressed);
-          const url = api.chatImages.getUrl(res.image_id);
-          editor.chain().focus().setImage({ src: url }).run();
+        if (!key) {
+          toast.error('Encryption is required. Wait until secure chat is ready.');
+          return;
         }
+
+        // Encrypted upload: encrypt the compressed bytes, upload as blob
+        const plainBytes = new Uint8Array(await compressed.arrayBuffer());
+        const encryptedBytes = encryptBinary(plainBytes, key);
+        const encryptedBlob = new Blob([encryptedBytes], { type: 'application/octet-stream' });
+
+        const res = await api.chatImages.upload(encryptedBlob, true);
+        // Insert as an actual TipTap image node. Raw insertContent can be serialized
+        // as text in some cases when src is omitted.
+        editor
+          .chain()
+          .focus()
+          .setImage({
+            src: 'encrypted-image',
+            alt: 'Encrypted image',
+            encryptedImageId: res.image_id,
+          } as unknown as { src: string; alt: string; encryptedImageId: string })
+          .run();
       } catch {
         toast.error('Failed to upload image');
       } finally {
