@@ -927,6 +927,53 @@ export const moderation = {
     }),
 };
 
+export type SessionStatus = 'proposed' | 'accepted' | 'cancelled' | 'completed';
+
+export interface SessionResponse {
+  session_id: string;
+  swap_id: string;
+  proposer_id: string;
+  scheduled_start: string;
+  scheduled_end: string;
+  status: SessionStatus;
+  livekit_room_name?: string | null;
+  reminder_sent_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const sessions = {
+  propose(swapId: string, data: { scheduled_start: string; scheduled_end: string }) {
+    return apiRequest<SessionResponse>(`/swaps/${encodeURIComponent(swapId)}/sessions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  list(swapId: string) {
+    return apiRequest<{ sessions: SessionResponse[] }>(
+      `/swaps/${encodeURIComponent(swapId)}/sessions`,
+    );
+  },
+  accept(sessionId: string) {
+    return apiRequest<SessionResponse>(
+      `/sessions/${encodeURIComponent(sessionId)}/accept`,
+      { method: 'PUT' },
+    );
+  },
+  cancel(sessionId: string) {
+    return apiRequest<SessionResponse>(
+      `/sessions/${encodeURIComponent(sessionId)}/cancel`,
+      { method: 'PUT' },
+    );
+  },
+  complete(sessionId: string) {
+    return apiRequest<SessionResponse>(
+      `/sessions/${encodeURIComponent(sessionId)}/complete`,
+      { method: 'PUT' },
+    );
+  },
+};
+
 export const api = {
   auth,
   users,
@@ -943,6 +990,7 @@ export const api = {
   e2eeKeys,
   video,
   moderation,
+  sessions,
 };
 
 export { ApiClientError, clearAuth, getAccessToken, setTokens, notifyAuthChange, updateStoredUser, decodeTokenPayload };

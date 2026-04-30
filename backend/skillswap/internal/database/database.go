@@ -785,6 +785,14 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		log.Println("✓ Added swap_requests.intro_message")
 	}
 
+	// Migration 018: sessions table (Commit 11)
+	if !db.Migrator().HasTable(&models.Session{}) {
+		if err := db.AutoMigrate(&models.Session{}); err != nil {
+			return err
+		}
+		log.Println("✓ Created sessions table")
+	}
+
 	return nil
 }
 
