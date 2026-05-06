@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -143,13 +144,13 @@ func (a *adminService) BanUser(adminID, userID uuid.UUID) error {
 	var targetUser models.User
 	if err := a.db.First(&targetUser, "user_id = ?", userID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("user not found")
+			return fmt.Errorf("user not found: %w", apperrors.ErrNotFound)
 		}
 		return err
 	}
 
 	if targetUser.IsAdmin {
-		return errors.New("cannot ban an admin user")
+		return fmt.Errorf("cannot ban an admin user: %w", apperrors.ErrForbidden)
 	}
 
 	return a.db.Model(&models.User{}).Where("user_id = ?", userID).Update("is_banned", true).Error
@@ -174,13 +175,13 @@ func (a *adminService) DeleteUser(adminID, userID uuid.UUID) error {
 	var targetUser models.User
 	if err := a.db.First(&targetUser, "user_id = ?", userID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("user not found")
+			return fmt.Errorf("user not found: %w", apperrors.ErrNotFound)
 		}
 		return err
 	}
 
 	if targetUser.IsAdmin {
-		return errors.New("cannot delete an admin user")
+		return fmt.Errorf("cannot delete an admin user: %w", apperrors.ErrForbidden)
 	}
 
 	return a.db.Delete(&models.User{}, "user_id = ?", userID).Error
@@ -203,7 +204,7 @@ func (a *adminService) RemoveUserAdmin(adminID, userID uuid.UUID) error {
 
 	// Cannot remove admin from self
 	if adminID == userID {
-		return errors.New("cannot remove admin privileges from yourself")
+		return fmt.Errorf("cannot remove admin privileges from yourself: %w", apperrors.ErrForbidden)
 	}
 
 	return a.db.Model(&models.User{}).Where("user_id = ?", userID).Update("is_admin", false).Error
@@ -362,13 +363,13 @@ func (a *adminService) verifyAdminPermissions(userID uuid.UUID) error {
 	var user models.User
 	if err := a.db.First(&user, "user_id = ? AND is_admin = true", userID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("unauthorized: admin privileges required")
+			return fmt.Errorf("admin privileges required: %w", apperrors.ErrForbidden)
 		}
 		return err
 	}
 
 	if user.IsBanned {
-		return errors.New("unauthorized: admin account is banned")
+		return fmt.Errorf("admin account is banned: %w", apperrors.ErrForbidden)
 	}
 
 	return nil

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -152,6 +153,16 @@ func (s *NotificationService) CreateSystemNotification(userIDs []uuid.UUID, titl
 
 // GetUserNotifications retrieves notifications for a user with pagination
 func (s *NotificationService) GetUserNotifications(userID uuid.UUID, page, limit int, unreadOnly bool) ([]models.Notification, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
 	var notifications []models.Notification
 	var total int64
 
@@ -213,7 +224,7 @@ func (s *NotificationService) DeleteNotification(userID, notificationID uuid.UUI
 	}
 
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("notification not found")
+		return fmt.Errorf("notification not found: %w", apperrors.ErrNotFound)
 	}
 
 	return nil
@@ -261,7 +272,7 @@ func (s *NotificationService) GetNotificationByID(userID, notificationID uuid.UU
 	if err := s.db.Where("user_id = ? AND notification_id = ?", userID, notificationID).
 		First(&notification).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("notification not found")
+			return nil, fmt.Errorf("notification not found: %w", apperrors.ErrNotFound)
 		}
 		return nil, fmt.Errorf("failed to get notification: %w", err)
 	}

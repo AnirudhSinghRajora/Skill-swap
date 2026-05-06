@@ -2,7 +2,10 @@ package service
 
 import (
 	"errors"
+	"fmt"
+	"log"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -54,76 +57,100 @@ type SwapMatch struct {
 }
 
 type swapService struct {
-	db *gorm.DB
+	db                  *gorm.DB
+	notificationService *NotificationService
 }
 
-func NewSwapService(db *gorm.DB) SwapService {
-	return &swapService{db: db}
+func NewSwapService(db *gorm.DB, notificationService *NotificationService) SwapService {
+	return &swapService{db: db, notificationService: notificationService}
 }
 
 // CreateSwapRequest creates a new swap request
 func (s *swapService) CreateSwapRequest(req *CreateSwapRequestDTO) (*models.SwapRequest, error) {
 	// Validate that requester and responder are different
 	if req.RequesterID == req.ResponderID {
-		return nil, errors.New("cannot create swap request with yourself")
+		return nil, fmt.Errorf("cannot create swap request with yourself: %w", apperrors.ErrSelfAction)
 	}
 
-	// Validate that requester offers the offered skill
-	var offeredCount int64
-	s.db.Model(&models.UserSkillOffered{}).
-		Where("user_id = ? AND skill_id = ?", req.RequesterID, req.OfferedSkillID).
-		Count(&offeredCount)
-	if offeredCount == 0 {
-		return nil, errors.New("you don't offer the specified skill")
-	}
+	var swapRequest *models.SwapRequest
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Validate that requester offers the offered skill
+		var offeredCount int64
+		if err := tx.Model(&models.UserSkillOffered{}).
+			Where("user_id = ? AND skill_id = ?", req.RequesterID, req.OfferedSkillID).
+			Count(&offeredCount).Error; err != nil {
+			return err
+		}
+		if offeredCount == 0 {
+			return fmt.Errorf("you don't offer the specified skill: %w", apperrors.ErrValidation)
+		}
 
-	// Validate that responder wants the offered skill
-	var wantedCount int64
-	s.db.Model(&models.UserSkillWanted{}).
-		Where("user_id = ? AND skill_id = ?", req.ResponderID, req.OfferedSkillID).
-		Count(&wantedCount)
-	if wantedCount == 0 {
-		return nil, errors.New("responder doesn't want the offered skill")
-	}
+		// Validate that responder wants the offered skill
+		var wantedCount int64
+		if err := tx.Model(&models.UserSkillWanted{}).
+			Where("user_id = ? AND skill_id = ?", req.ResponderID, req.OfferedSkillID).
+			Count(&wantedCount).Error; err != nil {
+			return err
+		}
+		if wantedCount == 0 {
+			return fmt.Errorf("responder doesn't want the offered skill: %w", apperrors.ErrValidation)
+		}
 
-	// Validate that responder offers the wanted skill
-	var responderOffersCount int64
-	s.db.Model(&models.UserSkillOffered{}).
-		Where("user_id = ? AND skill_id = ?", req.ResponderID, req.WantedSkillID).
-		Count(&responderOffersCount)
-	if responderOffersCount == 0 {
-		return nil, errors.New("responder doesn't offer the requested skill")
-	}
+		// Validate that responder offers the wanted skill
+		var responderOffersCount int64
+		if err := tx.Model(&models.UserSkillOffered{}).
+			Where("user_id = ? AND skill_id = ?", req.ResponderID, req.WantedSkillID).
+			Count(&responderOffersCount).Error; err != nil {
+			return err
+		}
+		if responderOffersCount == 0 {
+			return fmt.Errorf("responder doesn't offer the requested skill: %w", apperrors.ErrValidation)
+		}
 
-	// Check for existing pending request between same users and skills
-	var existingCount int64
-	s.db.Model(&models.SwapRequest{}).
-		Where("requester_id = ? AND responder_id = ? AND offered_skill_id = ? AND wanted_skill_id = ? AND status = ?",
-			req.RequesterID, req.ResponderID, req.OfferedSkillID, req.WantedSkillID, models.StatusPending).
-		Count(&existingCount)
-	if existingCount > 0 {
-		return nil, errors.New("pending swap request already exists")
-	}
+		// Check for existing pending request between same users and skills
+		var existingCount int64
+		if err := tx.Model(&models.SwapRequest{}).
+			Where("requester_id = ? AND responder_id = ? AND offered_skill_id = ? AND wanted_skill_id = ? AND status = ?",
+				req.RequesterID, req.ResponderID, req.OfferedSkillID, req.WantedSkillID, models.StatusPending).
+			Count(&existingCount).Error; err != nil {
+			return err
+		}
+		if existingCount > 0 {
+			return fmt.Errorf("pending swap request already exists: %w", apperrors.ErrDuplicate)
+		}
 
-	swapRequest := &models.SwapRequest{
-		RequesterID:    req.RequesterID,
-		ResponderID:    req.ResponderID,
-		OfferedSkillID: req.OfferedSkillID,
-		WantedSkillID:  req.WantedSkillID,
-		Status:         models.StatusPending,
-	}
+		swapRequest = &models.SwapRequest{
+			RequesterID:    req.RequesterID,
+			ResponderID:    req.ResponderID,
+			OfferedSkillID: req.OfferedSkillID,
+			WantedSkillID:  req.WantedSkillID,
+			Status:         models.StatusPending,
+		}
 
-	err := s.db.Create(swapRequest).Error
+		if err := tx.Create(swapRequest).Error; err != nil {
+			return err
+		}
+
+		// Load relationships
+		return tx.Preload("Requester").Preload("Responder").
+			Preload("OfferedSkill").Preload("WantedSkill").
+			First(swapRequest, swapRequest.SwapID).Error
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Load relationships
-	err = s.db.Preload("Requester").Preload("Responder").
-		Preload("OfferedSkill").Preload("WantedSkill").
-		First(swapRequest, swapRequest.SwapID).Error
+	// Notify the responder about the new swap request
+	if s.notificationService != nil {
+		_ = s.notificationService.CreateSwapRequestNotification(
+			swapRequest.ResponderID,
+			swapRequest.RequesterID,
+			swapRequest.SwapID,
+			swapRequest.OfferedSkill.Name,
+		)
+	}
 
-	return swapRequest, err
+	return swapRequest, nil
 }
 
 // GetSwapRequestByID retrieves a swap request by ID
@@ -135,7 +162,7 @@ func (s *swapService) GetSwapRequestByID(swapID uuid.UUID) (*models.SwapRequest,
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("swap request not found")
+			return nil, fmt.Errorf("swap request not found: %w", apperrors.ErrNotFound)
 		}
 		return nil, err
 	}
@@ -193,20 +220,20 @@ func (s *swapService) UpdateSwapStatus(swapID uuid.UUID, userID uuid.UUID, statu
 	// Only responder can accept/reject requests
 	if status == models.StatusAccepted || status == models.StatusRejected {
 		if swapRequest.ResponderID != userID {
-			return nil, errors.New("only responder can accept or reject requests")
+			return nil, fmt.Errorf("only responder can accept or reject requests: %w", apperrors.ErrForbidden)
 		}
 	}
 
 	// Only requester or responder can cancel
 	if status == models.StatusCancelled {
 		if swapRequest.RequesterID != userID && swapRequest.ResponderID != userID {
-			return nil, errors.New("only requester or responder can cancel requests")
+			return nil, fmt.Errorf("only requester or responder can cancel requests: %w", apperrors.ErrForbidden)
 		}
 	}
 
 	// Validate status transitions
 	if swapRequest.Status != models.StatusPending && status != models.StatusCancelled {
-		return nil, errors.New("can only modify pending requests")
+		return nil, fmt.Errorf("can only modify pending requests: %w", apperrors.ErrWrongStatus)
 	}
 
 	// Update status
@@ -214,6 +241,25 @@ func (s *swapService) UpdateSwapStatus(swapID uuid.UUID, userID uuid.UUID, statu
 	err = s.db.Save(swapRequest).Error
 	if err != nil {
 		return nil, err
+	}
+
+	// Auto-create conversation when a swap is accepted
+	if status == models.StatusAccepted {
+		conv := &models.Conversation{SwapID: swapRequest.SwapID}
+		if createErr := s.db.Create(conv).Error; createErr != nil {
+			// Log but don't fail — conversation can be created on first chat open
+			log.Printf("Info: could not auto-create conversation for swap %s: %v", swapID, createErr)
+		}
+	}
+
+	// Notify the requester about the status change
+	if s.notificationService != nil {
+		_ = s.notificationService.CreateSwapStatusNotification(
+			swapRequest.RequesterID,
+			swapRequest.SwapID,
+			string(status),
+			swapRequest.OfferedSkill.Name,
+		)
 	}
 
 	return swapRequest, nil
@@ -228,12 +274,12 @@ func (s *swapService) DeleteSwapRequest(swapID uuid.UUID, userID uuid.UUID) erro
 
 	// Only requester can delete
 	if swapRequest.RequesterID != userID {
-		return errors.New("only requester can delete swap requests")
+		return fmt.Errorf("only requester can delete swap requests: %w", apperrors.ErrForbidden)
 	}
 
 	// Can only delete pending requests
 	if swapRequest.Status != models.StatusPending {
-		return errors.New("can only delete pending requests")
+		return fmt.Errorf("can only delete pending requests: %w", apperrors.ErrWrongStatus)
 	}
 
 	return s.db.Delete(&models.SwapRequest{}, "swap_id = ?", swapID).Error

@@ -2,7 +2,9 @@ package service
 
 import (
 	"errors"
+	"fmt"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -31,12 +33,12 @@ type CreateRatingDTO struct {
 	RaterID uuid.UUID `json:"rater_id"`
 	RateeID uuid.UUID `json:"ratee_id" binding:"required"`
 	Score   int16     `json:"score" binding:"required,min=1,max=5"`
-	Comment *string   `json:"comment,omitempty"`
+	Comment *string   `json:"comment,omitempty" binding:"omitempty,max=1000"`
 }
 
 type UpdateRatingDTO struct {
 	Score   int16   `json:"score" binding:"required,min=1,max=5"`
-	Comment *string `json:"comment,omitempty"`
+	Comment *string `json:"comment,omitempty" binding:"omitempty,max=1000"`
 }
 
 type RatingFilter struct {
@@ -69,60 +71,66 @@ func NewRatingService(db *gorm.DB) RatingService {
 
 // CreateRating creates a new rating for a completed swap
 func (r *ratingService) CreateRating(req *CreateRatingDTO) (*models.SwapRating, error) {
-	// Check if the swap exists and is completed (accepted)
-	var swap models.SwapRequest
-	err := r.db.First(&swap, "swap_id = ?", req.SwapID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("swap request not found")
+	var rating *models.SwapRating
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		// Check if the swap exists and is completed (accepted)
+		var swap models.SwapRequest
+		if err := tx.First(&swap, "swap_id = ?", req.SwapID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("swap request not found: %w", apperrors.ErrNotFound)
+			}
+			return err
 		}
-		return nil, err
-	}
 
-	// Only allow rating for accepted swaps
-	if swap.Status != models.StatusAccepted {
-		return nil, errors.New("can only rate completed (accepted) swaps")
-	}
+		// Only allow rating for accepted swaps
+		if swap.Status != models.StatusAccepted {
+			return fmt.Errorf("can only rate completed (accepted) swaps: %w", apperrors.ErrWrongStatus)
+		}
 
-	// Verify the rater is part of the swap
-	if swap.RequesterID != req.RaterID && swap.ResponderID != req.RaterID {
-		return nil, errors.New("only participants can rate a swap")
-	}
+		// Verify the rater is part of the swap
+		if swap.RequesterID != req.RaterID && swap.ResponderID != req.RaterID {
+			return fmt.Errorf("only participants can rate a swap: %w", apperrors.ErrNotParticipant)
+		}
 
-	// Determine the ratee (the other participant)
-	if swap.RequesterID == req.RaterID {
-		req.RateeID = swap.ResponderID
-	} else {
-		req.RateeID = swap.RequesterID
-	}
+		// Determine the ratee (the other participant)
+		if swap.RequesterID == req.RaterID {
+			req.RateeID = swap.ResponderID
+		} else {
+			req.RateeID = swap.RequesterID
+		}
 
-	// Check if user has already rated this swap
-	var existingCount int64
-	r.db.Model(&models.SwapRating{}).
-		Where("swap_id = ? AND rater_id = ?", req.SwapID, req.RaterID).
-		Count(&existingCount)
-	if existingCount > 0 {
-		return nil, errors.New("you have already rated this swap")
-	}
+		// Check if user has already rated this swap
+		var existingCount int64
+		if err := tx.Model(&models.SwapRating{}).
+			Where("swap_id = ? AND rater_id = ?", req.SwapID, req.RaterID).
+			Count(&existingCount).Error; err != nil {
+			return err
+		}
+		if existingCount > 0 {
+			return fmt.Errorf("you have already rated this swap: %w", apperrors.ErrConflict)
+		}
 
-	rating := &models.SwapRating{
-		SwapID:  req.SwapID,
-		RaterID: req.RaterID,
-		RateeID: req.RateeID,
-		Score:   req.Score,
-		Comment: req.Comment,
-	}
+		rating = &models.SwapRating{
+			SwapID:  req.SwapID,
+			RaterID: req.RaterID,
+			RateeID: req.RateeID,
+			Score:   req.Score,
+			Comment: req.Comment,
+		}
 
-	err = r.db.Create(rating).Error
+		if err := tx.Create(rating).Error; err != nil {
+			return err
+		}
+
+		// Load relationships
+		return tx.Preload("Swap").Preload("Rater").Preload("Ratee").
+			First(rating, rating.RatingID).Error
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Load relationships
-	err = r.db.Preload("Swap").Preload("Rater").Preload("Ratee").
-		First(rating, rating.RatingID).Error
-
-	return rating, err
+	return rating, nil
 }
 
 // GetRatingByID retrieves a rating by its ID
@@ -133,7 +141,7 @@ func (r *ratingService) GetRatingByID(ratingID uuid.UUID) (*models.SwapRating, e
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("rating not found")
+			return nil, fmt.Errorf("rating not found: %w", apperrors.ErrNotFound)
 		}
 		return nil, err
 	}
@@ -150,7 +158,7 @@ func (r *ratingService) UpdateRating(ratingID uuid.UUID, userID uuid.UUID, req *
 
 	// Only the rater can update their rating
 	if rating.RaterID != userID {
-		return nil, errors.New("only the rater can update this rating")
+		return nil, fmt.Errorf("only the rater can update this rating: %w", apperrors.ErrForbidden)
 	}
 
 	// Update fields
@@ -174,7 +182,7 @@ func (r *ratingService) DeleteRating(ratingID uuid.UUID, userID uuid.UUID) error
 
 	// Only the rater can delete their rating
 	if rating.RaterID != userID {
-		return errors.New("only the rater can delete this rating")
+		return fmt.Errorf("only the rater can delete this rating: %w", apperrors.ErrForbidden)
 	}
 
 	return r.db.Delete(&models.SwapRating{}, "rating_id = ?", ratingID).Error

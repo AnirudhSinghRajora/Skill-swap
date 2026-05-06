@@ -2,8 +2,10 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -58,22 +60,22 @@ func (a *availabilityService) CreateAvailabilitySlot(req *CreateAvailabilitySlot
 	// Parse time strings
 	startTime, err := time.Parse("15:04", req.StartTime)
 	if err != nil {
-		return nil, errors.New("invalid start_time format, use HH:MM")
+		return nil, fmt.Errorf("invalid start_time format, use HH:MM: %w", apperrors.ErrValidation)
 	}
 
 	endTime, err := time.Parse("15:04", req.EndTime)
 	if err != nil {
-		return nil, errors.New("invalid end_time format, use HH:MM")
+		return nil, fmt.Errorf("invalid end_time format, use HH:MM: %w", apperrors.ErrValidation)
 	}
 
 	// Validate time range
 	if endTime.Before(startTime) || endTime.Equal(startTime) {
-		return nil, errors.New("end_time must be after start_time")
+		return nil, fmt.Errorf("end_time must be after start_time: %w", apperrors.ErrValidation)
 	}
 
 	// Validate day bitmask (1-127, representing Monday=1, Tuesday=2, ..., Sunday=64)
 	if req.DayBitmask < 1 || req.DayBitmask > 127 {
-		return nil, errors.New("day_bitmask must be between 1 and 127")
+		return nil, fmt.Errorf("day_bitmask must be between 1 and 127: %w", apperrors.ErrValidation)
 	}
 
 	slot := &models.AvailabilitySlot{
@@ -112,7 +114,7 @@ func (a *availabilityService) GetAvailabilitySlot(slotID uuid.UUID, userID uuid.
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("availability slot not found")
+			return nil, fmt.Errorf("availability slot not found: %w", apperrors.ErrNotFound)
 		}
 		return nil, err
 	}
@@ -130,22 +132,22 @@ func (a *availabilityService) UpdateAvailabilitySlot(slotID uuid.UUID, userID uu
 	// Parse time strings
 	startTime, err := time.Parse("15:04", req.StartTime)
 	if err != nil {
-		return nil, errors.New("invalid start_time format, use HH:MM")
+		return nil, fmt.Errorf("invalid start_time format, use HH:MM: %w", apperrors.ErrValidation)
 	}
 
 	endTime, err := time.Parse("15:04", req.EndTime)
 	if err != nil {
-		return nil, errors.New("invalid end_time format, use HH:MM")
+		return nil, fmt.Errorf("invalid end_time format, use HH:MM: %w", apperrors.ErrValidation)
 	}
 
 	// Validate time range
 	if endTime.Before(startTime) || endTime.Equal(startTime) {
-		return nil, errors.New("end_time must be after start_time")
+		return nil, fmt.Errorf("end_time must be after start_time: %w", apperrors.ErrValidation)
 	}
 
 	// Validate day bitmask
 	if req.DayBitmask < 1 || req.DayBitmask > 127 {
-		return nil, errors.New("day_bitmask must be between 1 and 127")
+		return nil, fmt.Errorf("day_bitmask must be between 1 and 127: %w", apperrors.ErrValidation)
 	}
 
 	// Update fields
@@ -172,7 +174,7 @@ func (a *availabilityService) DeleteAvailabilitySlot(slotID uuid.UUID, userID uu
 	}
 
 	if result.RowsAffected == 0 {
-		return errors.New("availability slot not found")
+		return fmt.Errorf("availability slot not found: %w", apperrors.ErrNotFound)
 	}
 
 	return nil
