@@ -4,61 +4,184 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
-import { MessageSquare, Star, TrendingUp, Calendar, ArrowRight, Plus, Search } from 'lucide-react';
+import { Star, TrendingUp, Calendar, ArrowRight, Search, Loader2, MessageCircle } from 'lucide-react';
 import Link from 'next/link';
-import { getUserById, getSwapRequestsByUserId, getNotificationsByUserId } from '@/lib/dummy-data';
+import { useAuth } from '@/hooks/useAuth';
+import { useQuery } from '@tanstack/react-query';
+import api, { getPhotoUrl } from '@/lib/api';
+import { Skeleton } from '@/components/ui/skeleton';
+import type { NotificationType } from '@/types/notification';
+
+function getNotificationHref(notification: { type: NotificationType; related_id: string | null }): string {
+	switch (notification.type) {
+		case 'swap_request':
+		case 'swap_accepted':
+		case 'swap_rejected':
+		case 'swap_completed':
+			return '/swaps';
+		case 'new_rating':
+			return '/profile?tab=reviews';
+		case 'new_message':
+			return notification.related_id
+				? `/messages?conversation=${notification.related_id}`
+				: '/messages';
+		case 'skill_matched':
+			return '/browse';
+		default:
+			return '/notifications';
+	}
+}
 
 export default function DashboardPage() {
-	const currentUserId = '1'; // Sarah Johnson
-	const user = getUserById(currentUserId);
-	const swapRequests = getSwapRequestsByUserId(currentUserId);
-	const notifications = getNotificationsByUserId();
+	const { user, isLoading: authLoading } = useAuth(true);
 
-	if (!user) {
+	const { data: profile, isLoading: profileLoading } = useQuery({
+		queryKey: ['profile'],
+		queryFn: () => api.users.getProfile(),
+		enabled: !!user,
+	});
+
+	const { data: swapData, isLoading: swapsLoading } = useQuery({
+		queryKey: ['swaps'],
+		queryFn: () => api.swaps.list(),
+		enabled: !!user,
+	});
+
+	const { data: notifData } = useQuery({
+		queryKey: ['notifications-recent'],
+		queryFn: () => api.notifications.list({ limit: 5 }),
+		enabled: !!user,
+	});
+
+	const { data: ratingStats } = useQuery({
+		queryKey: ['rating-stats', user?.user_id],
+		queryFn: () => api.ratings.getStatsForUser(user!.user_id),
+		enabled: !!user?.user_id,
+	});
+
+	const { data: conversationsData } = useQuery({
+		queryKey: ['conversations'],
+		queryFn: () => api.conversations.list(),
+		enabled: !!user,
+	});
+
+	const isDataLoading = authLoading || profileLoading || swapsLoading;
+
+	if (authLoading) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
-				<div className="text-center">
-					<h1 className="text-2xl font-bold text-foreground mb-2">User not found</h1>
-					<p className="text-muted-foreground">Unable to load dashboard.</p>
-				</div>
+				<Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
 			</div>
 		);
 	}
 
-	const pendingSwaps = swapRequests.filter((req) => req.status === 'pending');
-	const completedSwaps = swapRequests.filter((req) => req.status === 'accepted');
-	const unreadNotifications = notifications.filter((n) => !n.isRead);
+	const allSwaps = [...(swapData?.sent ?? []), ...(swapData?.received ?? [])];
+	const pendingSwaps = allSwaps.filter((s) => s.status === 'pending');
+	const activeSwaps = allSwaps.filter((s) => s.status === 'accepted');
+	const completedSwaps = allSwaps.filter((s) => s.status === 'completed');
+	const recentSwaps = allSwaps
+		.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+		.slice(0, 5);
+	const notifications = notifData?.notifications ?? [];
+	const unreadCount = notifications.filter((n) => !n.is_read).length;
+	const conversations = conversationsData?.conversations ?? [];
+	const recentConversations = [...conversations]
+		.sort((a, b) => {
+			const aTime = a.last_message?.created_at ?? a.created_at;
+			const bTime = b.last_message?.created_at ?? b.created_at;
+			return new Date(bTime).getTime() - new Date(aTime).getTime();
+		})
+		.slice(0, 3);
 
 	const stats = [
 		{
 			title: 'Total Swaps',
-			value: swapRequests.length,
+			value: allSwaps.length,
 			icon: TrendingUp,
 			description: 'All time exchanges',
-			color: 'text-blue-600'
+			color: 'text-blue-600',
 		},
 		{
-			title: 'Completed Swaps',
-			value: completedSwaps.length,
-			icon: Star,
-			description: 'Successful exchanges',
-			color: 'text-green-600'
+			title: 'In Progress',
+			value: activeSwaps.length,
+			icon: MessageCircle,
+			description: `${completedSwaps.length} completed`,
+			color: 'text-green-600',
 		},
 		{
-			title: 'Pending Requests',
+			title: 'Pending',
 			value: pendingSwaps.length,
 			icon: Calendar,
 			description: 'Awaiting response',
-			color: 'text-yellow-600'
+			color: 'text-yellow-600',
 		},
 		{
-			title: 'New Messages',
-			value: unreadNotifications.filter((n) => n.type === 'messageReceived').length,
-			icon: MessageSquare,
-			description: 'Unread conversations',
-			color: 'text-purple-600'
-		}
+			title: 'Avg Rating',
+			value: ratingStats?.average_rating ? ratingStats.average_rating.toFixed(1) : '—',
+			icon: Star,
+			description: `${ratingStats?.total_ratings ?? 0} reviews`,
+			color: 'text-purple-600',
+		},
 	];
+
+	if (isDataLoading) {
+		return (
+			<div className="min-h-screen bg-background">
+				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+					<div className="mb-8">
+						<Skeleton className="h-9 w-72 mb-2" />
+						<Skeleton className="h-5 w-96" />
+					</div>
+					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+						{[1, 2, 3, 4].map((i) => (
+							<Card key={i}>
+								<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+									<Skeleton className="h-4 w-20" />
+									<Skeleton className="h-4 w-4 rounded" />
+								</CardHeader>
+								<CardContent>
+									<Skeleton className="h-8 w-12 mb-1" />
+									<Skeleton className="h-3 w-24" />
+								</CardContent>
+							</Card>
+						))}
+					</div>
+					<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+						<div className="lg:col-span-2">
+							<Card>
+								<CardHeader>
+									<Skeleton className="h-6 w-36 mb-1" />
+									<Skeleton className="h-4 w-64" />
+								</CardHeader>
+								<CardContent className="space-y-4">
+									{[1, 2, 3].map((i) => (
+										<div key={i} className="flex items-center gap-3">
+											<Skeleton className="h-10 w-10 rounded-full" />
+											<div className="flex-1">
+												<Skeleton className="h-4 w-48 mb-1" />
+												<Skeleton className="h-3 w-32" />
+											</div>
+										</div>
+									))}
+								</CardContent>
+							</Card>
+						</div>
+						<Card>
+							<CardHeader>
+								<Skeleton className="h-6 w-28 mb-1" />
+								<Skeleton className="h-4 w-40" />
+							</CardHeader>
+							<CardContent className="space-y-3">
+								{[1, 2, 3].map((i) => (
+									<Skeleton key={i} className="h-12 w-full rounded" />
+								))}
+							</CardContent>
+						</Card>
+					</div>
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div className="min-h-screen bg-background">
@@ -66,7 +189,7 @@ export default function DashboardPage() {
 				{/* Welcome Header */}
 				<div className="mb-8">
 					<h1 className="text-3xl font-bold text-foreground mb-2">
-						Welcome back, {user.name.split(' ')[0]}!
+						Welcome back, {profile?.name?.split(' ')[0] ?? 'there'}!
 					</h1>
 					<p className="text-muted-foreground">
 						Here&apos;s what&apos;s happening with your skill exchanges
@@ -77,21 +200,25 @@ export default function DashboardPage() {
 				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
 					{stats.map((stat) => {
 						const Icon = stat.icon;
+						const linkMap: Record<string, string> = {
+							'Total Swaps': '/swaps',
+							'In Progress': '/swaps',
+							'Pending': '/swaps',
+							'Avg Rating': `/profile?tab=reviews`,
+						};
 						return (
-							<Card key={stat.title}>
-								<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-									<CardTitle className="text-sm font-medium">
-										{stat.title}
-									</CardTitle>
-									<Icon className={`w-4 h-4 ${stat.color}`} />
-								</CardHeader>
-								<CardContent>
-									<div className="text-2xl font-bold">{stat.value}</div>
-									<p className="text-xs text-muted-foreground">
-										{stat.description}
-									</p>
-								</CardContent>
-							</Card>
+							<Link key={stat.title} href={linkMap[stat.title] ?? '/dashboard'}>
+								<Card className="hover:bg-muted/50 transition-colors cursor-pointer">
+									<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+										<CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
+										<Icon className={`w-4 h-4 ${stat.color}`} />
+									</CardHeader>
+									<CardContent>
+										<div className="text-2xl font-bold">{stat.value}</div>
+										<p className="text-xs text-muted-foreground">{stat.description}</p>
+									</CardContent>
+								</Card>
+							</Link>
 						);
 					})}
 				</div>
@@ -102,68 +229,68 @@ export default function DashboardPage() {
 						<Card>
 							<CardHeader>
 								<CardTitle>Recent Activity</CardTitle>
-								<CardDescription>
-									Your latest skill exchanges and interactions
-								</CardDescription>
+								<CardDescription>Your latest skill exchanges and interactions</CardDescription>
 							</CardHeader>
 							<CardContent>
-								<div className="space-y-4">
-									{swapRequests.slice(0, 5).map((request) => {
-										const otherUser =
-											request.requesterId === currentUserId
-												? getUserById(request.responderId)
-												: getUserById(request.requesterId);
+								{recentSwaps.length > 0 ? (
+									<div className="space-y-4">
+										{recentSwaps.map((request) => {
+											const isRequester = request.requester_id === user?.user_id;
+											const other = isRequester ? request.responder : request.requester;
 
-										return (
-											<div
-												key={request.swapId}
-												className="flex items-center space-x-4 p-3 border border-border rounded-lg"
-											>
-												<Avatar
-													src={otherUser?.photoUrl || undefined}
-													alt={otherUser?.name || 'User'}
-													fallback={
-														otherUser?.name
-															?.split(' ')
-															.map((n) => n[0])
-															.join('') || 'U'
-													}
-													className="w-10 h-10"
-												/>
-												<div className="flex-1">
-													<p className="font-medium">
-														{request.requesterId === currentUserId
-															? 'You offered'
-															: `${otherUser?.name} offered`}{' '}
-														{request.offeredSkill.name}
-													</p>
-													<p className="text-sm text-muted-foreground">
-														for {request.wantedSkill.name} •{' '}
-														{new Date(
-															request.createdAt
-														).toLocaleDateString()}
-													</p>
-												</div>
-												<Badge
-													variant={
-														request.status === 'accepted'
-															? 'default'
-															: request.status === 'rejected'
-																? 'destructive'
-																: 'secondary'
-													}
+											return (
+												<Link
+													key={request.swap_id}
+													href="/swaps"
+													className="flex items-center space-x-4 p-3 border border-border rounded-lg hover:bg-muted/50 transition-colors"
 												>
-													{request.status.charAt(0).toUpperCase() +
-														request.status.slice(1)}
-												</Badge>
-											</div>
-										);
-									})}
-								</div>
+													<Avatar
+													src={other.has_photo ? getPhotoUrl(other.user_id) : undefined}
+														alt={other.name}
+														fallback={
+															other.name
+																.split(' ')
+																.map((n) => n[0])
+																.join('') || 'U'
+														}
+														className="w-10 h-10"
+													/>
+													<div className="flex-1">
+														<p className="font-medium">
+															{isRequester ? 'You offered' : `${other.name} offered`}{' '}
+															{request.offered_skill.name}
+														</p>
+														<p className="text-sm text-muted-foreground">
+															for {request.wanted_skill.name} •{' '}
+															{new Date(request.created_at).toLocaleDateString()}
+														</p>
+													</div>
+													<Badge
+														variant={
+															request.status === 'accepted'
+																? 'default'
+																: request.status === 'completed'
+																	? 'outline'
+																	: request.status === 'rejected' || request.status === 'cancelled'
+																		? 'destructive'
+																		: 'secondary'
+														}
+													>
+														{request.status === 'accepted' ? 'In Progress' : request.status === 'cancelled' ? 'Cancelled' : request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+													</Badge>
+												</Link>
+											);
+										})}
+									</div>
+								) : (
+									<div className="text-center py-8 text-muted-foreground">
+										<p>No swap activity yet. Browse users to get started!</p>
+									</div>
+								)}
 								<div className="mt-4">
-									<Link href="/profile">
+									<Link href="/swaps">
 										<Button variant="outline" className="w-full">
-											View All Activity
+											View All Swaps
 											<ArrowRight className="w-4 h-4 ml-2" />
 										</Button>
 									</Link>
@@ -172,8 +299,55 @@ export default function DashboardPage() {
 						</Card>
 					</div>
 
-					{/* Quick Actions & Notifications */}
+					{/* Right sidebar */}
 					<div className="space-y-6">
+						{/* Recent Messages */}
+						{recentConversations.length > 0 && (
+							<Card>
+								<CardHeader className="flex flex-row items-center justify-between space-y-0">
+									<CardTitle>Recent Messages</CardTitle>
+									<Link href="/messages">
+										<Button variant="ghost" size="sm" className="text-xs">
+											View all
+										</Button>
+									</Link>
+								</CardHeader>
+								<CardContent>
+									<div className="space-y-3">
+										{recentConversations.map((convo) => (
+											<Link
+												key={convo.conversation_id}
+												href={`/messages?conversation=${convo.conversation_id}`}
+												className="flex items-center gap-3 p-2 -mx-2 rounded-md hover:bg-muted/50 transition-colors"
+											>
+												<Avatar
+													src={convo.other_user.has_photo ? getPhotoUrl(convo.other_user.user_id) : undefined}
+													alt={convo.other_user.name}
+													fallback={convo.other_user.name.charAt(0).toUpperCase()}
+													className="w-8 h-8 shrink-0"
+												/>
+												<div className="min-w-0 flex-1">
+													<p className="text-sm font-medium truncate">{convo.other_user.name}</p>
+													{convo.last_message ? (
+														<p className="text-xs text-muted-foreground truncate">
+															{convo.last_message.content.replace(/<[^>]*>/g, '').slice(0, 50)}
+														</p>
+													) : (
+														<p className="text-xs text-muted-foreground italic">No messages yet</p>
+													)}
+												</div>
+												{convo.unread_count > 0 && (
+													<Badge variant="destructive" className="text-[10px] h-5 min-w-5 flex items-center justify-center">
+														{convo.unread_count}
+													</Badge>
+												)}
+											</Link>
+										))}
+									</div>
+								</CardContent>
+							</Card>
+						)}
+
 						{/* Quick Actions */}
 						<Card>
 							<CardHeader>
@@ -188,13 +362,19 @@ export default function DashboardPage() {
 								</Link>
 								<Link href="/messages">
 									<Button variant="outline" className="w-full justify-start">
-										<MessageSquare className="w-4 h-4 mr-2" />
-										View Messages
+										<MessageCircle className="w-4 h-4 mr-2" />
+										Messages
+									</Button>
+								</Link>
+								<Link href="/swaps">
+									<Button variant="outline" className="w-full justify-start">
+										<ArrowRight className="w-4 h-4 mr-2" />
+										Manage Swaps
 									</Button>
 								</Link>
 								<Link href="/profile">
 									<Button variant="outline" className="w-full justify-start">
-										<Plus className="w-4 h-4 mr-2" />
+										<Star className="w-4 h-4 mr-2" />
 										Update Skills
 									</Button>
 								</Link>
@@ -203,122 +383,94 @@ export default function DashboardPage() {
 
 						{/* Recent Notifications */}
 						<Card>
-							<CardHeader>
-								<CardTitle>Recent Notifications</CardTitle>
+							<CardHeader className="flex flex-row items-center justify-between space-y-0">
+								<CardTitle>Notifications</CardTitle>
+								{unreadCount > 0 && (
+									<Badge variant="destructive" className="text-xs">
+										{unreadCount} new
+									</Badge>
+								)}
 							</CardHeader>
 							<CardContent>
-								<div className="space-y-3">
-									{notifications.slice(0, 3).map((notification) => (
-										<div
-											key={notification.notificationId}
-											className="flex items-start space-x-3"
-										>
-											<div
-												className={`w-2 h-2 rounded-full mt-2 ${
-													notification.isRead ? 'bg-muted' : 'bg-primary'
-												}`}
-											/>
-											<div className="flex-1">
-												<p className="text-sm font-medium">
-													{notification.content}
-												</p>
-												<p className="text-xs text-muted-foreground">
-													{new Date(
-														notification.createdAt
-													).toLocaleDateString()}
-												</p>
-											</div>
-										</div>
-									))}
-								</div>
-								{notifications.length > 3 && (
-									<Button variant="outline" className="w-full mt-3">
-										View All Notifications
-									</Button>
+								{notifications.length > 0 ? (
+									<div className="space-y-3">
+										{notifications.slice(0, 4).map((notification) => (
+											<Link
+												key={notification.notification_id}
+											href={getNotificationHref(notification)}
+												className="flex items-start space-x-3 hover:bg-muted/50 rounded-md p-1 -m-1 transition-colors"
+											>
+												<div
+													className={`w-2 h-2 rounded-full mt-2 ${
+														notification.is_read ? 'bg-muted' : 'bg-primary'
+													}`}
+												/>
+												<div className="flex-1">
+													<p className="text-sm font-medium">{notification.title}</p>
+													<p className="text-xs text-muted-foreground">
+														{notification.message}
+													</p>
+													<p className="text-xs text-muted-foreground">
+														{new Date(notification.created_at).toLocaleDateString()}
+													</p>
+												</div>
+											</Link>
+										))}
+									</div>
+								) : (
+									<p className="text-sm text-muted-foreground text-center py-4">
+										No notifications yet
+									</p>
 								)}
 							</CardContent>
 						</Card>
 
-						{/* Skills Summary */}
-						<Card>
-							<CardHeader>
-								<CardTitle>Your Skills</CardTitle>
-							</CardHeader>
-							<CardContent>
-								<div className="space-y-3">
-									<div>
-										<h4 className="text-sm font-medium mb-2">
-											Skills Offered ({user.skillsOffered.length})
-										</h4>
-										<div className="flex flex-wrap gap-1">
-											{user.skillsOffered
-												.filter((skill) => skill)
-												.map((skill) => (
-													<Badge
-														key={skill.skillId}
-														variant="secondary"
-														className="text-xs"
-													>
-														{skill.name}
-													</Badge>
-												))}
+						{/* Your Skills */}
+						{profile && (
+							<Card>
+								<CardHeader>
+									<CardTitle>Your Skills</CardTitle>
+								</CardHeader>
+								<CardContent>
+									<div className="space-y-3">
+										<div>
+											<h4 className="text-sm font-medium mb-2">
+												Offering ({profile.skills_offered.length})
+											</h4>
+											<div className="flex flex-wrap gap-1">
+												{profile.skills_offered.length > 0 ? (
+													profile.skills_offered.map((skill) => (
+														<Badge key={skill.skill_id} variant="secondary" className="text-xs">
+															{skill.name}
+														</Badge>
+													))
+												) : (
+													<p className="text-xs text-muted-foreground">None yet</p>
+												)}
+											</div>
+										</div>
+										<div>
+											<h4 className="text-sm font-medium mb-2">
+												Looking for ({profile.skills_wanted.length})
+											</h4>
+											<div className="flex flex-wrap gap-1">
+												{profile.skills_wanted.length > 0 ? (
+													profile.skills_wanted.map((skill) => (
+														<Badge key={skill.skill_id} variant="outline" className="text-xs">
+															{skill.name}
+														</Badge>
+													))
+												) : (
+													<p className="text-xs text-muted-foreground">None yet</p>
+												)}
+											</div>
 										</div>
 									</div>
-									<div>
-										<h4 className="text-sm font-medium mb-2">
-											Skills Wanted ({user.skillsWanted.length})
-										</h4>
-										<div className="flex flex-wrap gap-1">
-											{user.skillsWanted
-												.filter((skill) => skill)
-												.map((skill) => (
-													<Badge
-														key={skill.skillId}
-														variant="outline"
-														className="text-xs"
-													>
-														{skill.name}
-													</Badge>
-												))}
-										</div>
-									</div>
-								</div>
-							</CardContent>
-						</Card>
+								</CardContent>
+							</Card>
+						)}
 					</div>
 				</div>
-
-				{/* Popular Skills in Your Area */}
-				<Card className="mt-8">
-					<CardHeader>
-						<CardTitle>Popular Skills in Your Area</CardTitle>
-						<CardDescription>
-							Skills that are trending among users near you
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-							{[
-								'JavaScript',
-								'Cooking',
-								'Photography',
-								'Spanish',
-								'Guitar',
-								'Yoga'
-							].map((skill) => (
-								<div
-									key={skill}
-									className="text-center p-3 border border-border rounded-lg hover:border-primary/50 transition-colors cursor-pointer"
-								>
-									<h3 className="font-medium text-sm">{skill}</h3>
-									<p className="text-xs text-muted-foreground mt-1">
-										{Math.floor(Math.random() * 20) + 5} people
-									</p>
-								</div>
-							))}
-						</div>
-					</CardContent>
-				</Card>
 			</div>
 		</div>
 	);

@@ -27,12 +27,7 @@ export default function AboutPage() {
 		}
 	];
 
-	const stats = [
-		{ number: '1000+', label: 'Active Users' },
-		{ number: '500+', label: 'Skills Exchanged' },
-		{ number: '50+', label: 'Cities' },
-		{ number: '4.8', label: 'Average Rating' }
-	];
+
 
 	const howItWorks = [
 		{
@@ -62,45 +57,30 @@ export default function AboutPage() {
 			<div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Hero Section */}
 				<div className="text-center mb-16">
-					<h1 className="text-4xl font-bold text-foreground mb-4">About SkillShare</h1>
+					<h1 className="text-4xl font-bold text-foreground mb-4">About SkillSwap</h1>
 					<p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-8">
-						SkillShare is a platform that connects people who want to learn new skills
+						SkillSwap is a platform that connects people who want to learn new skills
 						with those who can teach them. We believe that everyone has something
 						valuable to share and something new to learn.
 					</p>
 					<div className="flex flex-wrap justify-center gap-4">
-						<Link href="/register">
-							<Button size="lg">
-								Get Started
-								<ArrowRight className="w-4 h-4 ml-2" />
-							</Button>
-						</Link>
-						<Link href="/browse">
-							<Button variant="outline" size="lg">
-								Browse People
-							</Button>
-						</Link>
-					</div>
+					<Link href="/auth/signup">
+						<Button size="lg">
+							Get Started
+							<ArrowRight className="w-4 h-4 ml-2" />
+						</Button>
+					</Link>
+					<Link href="/browse">
+						<Button variant="outline" size="lg">
+							Browse People
+						</Button>
+					</Link>
 				</div>
-
-				{/* Stats */}
-				<div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-16">
-					{stats.map((stat) => (
-						<Card key={stat.label}>
-							<CardContent className="p-6 text-center">
-								<div className="text-3xl font-bold text-primary mb-2">
-									{stat.number}
-								</div>
-								<p className="text-muted-foreground">{stat.label}</p>
-							</CardContent>
-						</Card>
-					))}
-				</div>
-
+			</div>
 				{/* Features */}
 				<div className="mb-16">
 					<h2 className="text-3xl font-bold text-foreground text-center mb-12">
-						Why Choose SkillShare?
+						Why Choose SkillSwap?
 					</h2>
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 						{features.map((feature) => {
@@ -151,7 +131,7 @@ export default function AboutPage() {
 				{/* Popular Skills */}
 				<div className="mb-16">
 					<h2 className="text-3xl font-bold text-foreground text-center mb-12">
-						Popular Skills on SkillShare
+						Popular Skills on SkillSwap
 					</h2>
 					<div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
 						{[
@@ -264,11 +244,11 @@ export default function AboutPage() {
 							Ready to Start Learning?
 						</h2>
 						<p className="text-muted-foreground mb-8 max-w-2xl mx-auto">
-							Join thousands of people who are already exchanging skills and building
-							meaningful connections in their communities.
-						</p>
-						<div className="flex flex-wrap justify-center gap-4">
-							<Link href="/register">
+						Join our growing community of people exchanging skills and building
+						meaningful connections.
+					</p>
+					<div className="flex flex-wrap justify-center gap-4">
+						<Link href="/auth/signup">
 								<Button size="lg">
 									Create Account
 									<ArrowRight className="w-4 h-4 ml-2" />

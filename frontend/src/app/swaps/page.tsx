@@ -1,190 +1,664 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle, XCircle, Clock, MessageSquare, ArrowRight, User } from 'lucide-react';
-import { getUserById, getSwapRequestsByUserId } from '@/lib/dummy-data';
-import { SwapRequest } from '@/types/swapRequest';
+import {
+	CheckCircle, XCircle, Clock, ArrowRight, User, Loader2, Star,
+	X, ArrowRightLeft, MessageCircle, CircleCheckBig, Undo2, Ban,
+} from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import api, { getPhotoUrl, SwapRequestResponse, UserProfileResponse, SkillResponse, RatingResponse } from '@/lib/api';
+import Link from 'next/link';
+import { toast } from 'sonner';
+
+function getStatusIcon(status: string) {
+	switch (status) {
+		case 'accepted':
+			return <MessageCircle className="w-4 h-4 text-blue-500" />;
+		case 'completed':
+			return <CircleCheckBig className="w-4 h-4 text-green-500" />;
+		case 'rejected':
+			return <XCircle className="w-4 h-4 text-red-500" />;
+		case 'cancelled':
+			return <Ban className="w-4 h-4 text-gray-400" />;
+		case 'pending':
+			return <Clock className="w-4 h-4 text-yellow-500" />;
+		default:
+			return null;
+	}
+}
+
+function getStatusBadge(status: string) {
+	const map: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+		pending:   { label: 'Pending',     variant: 'secondary' },
+		accepted:  { label: 'In Progress', variant: 'default' },
+		completed: { label: 'Completed',   variant: 'outline' },
+		rejected:  { label: 'Rejected',    variant: 'destructive' },
+		cancelled: { label: 'Cancelled',   variant: 'secondary' },
+	};
+	const s = map[status] ?? { label: status, variant: 'secondary' as const };
+	return <Badge variant={s.variant}>{s.label}</Badge>;
+}
+
+function SwapCard({
+	request,
+	isIncoming,
+	currentUserId,
+	onStatusChange,
+	statusPending,
+}: {
+	request: SwapRequestResponse;
+	isIncoming: boolean;
+	currentUserId: string;
+	onStatusChange: (id: string, status: 'accepted' | 'rejected' | 'cancelled') => void;
+	statusPending: boolean;
+}) {
+	const queryClient = useQueryClient();
+	const other = isIncoming ? request.requester : request.responder;
+	const [showRatingForm, setShowRatingForm] = useState(false);
+	const [ratingScore, setRatingScore] = useState(5);
+	const [ratingComment, setRatingComment] = useState('');
+
+	// Determine if the *current* user is the requester or responder for this swap
+	const isRequester = request.requester_id === currentUserId;
+	const myCompleted = isRequester ? request.requester_completed : request.responder_completed;
+	const theirCompleted = isRequester ? request.responder_completed : request.requester_completed;
+
+	// Fetch existing ratings (only for completed swaps)
+	const { data: swapRatingsData } = useQuery({
+		queryKey: ['swapRatings', request.swap_id],
+		queryFn: () => api.ratings.getForSwap(request.swap_id),
+		enabled: request.status === 'completed',
+	});
+
+	const swapRatings: RatingResponse[] = swapRatingsData?.ratings ?? [];
+	const myRating = swapRatings.find((r) => r.rater_id === currentUserId);
+	const theirRating = swapRatings.find((r) => r.rater_id !== currentUserId);
+
+	const createRatingMutation = useMutation({
+		mutationFn: (data: { swap_id: string; ratee_id: string; score: number; comment?: string }) =>
+			api.ratings.create(data),
+		onSuccess: () => {
+			setShowRatingForm(false);
+			setRatingScore(5);
+			setRatingComment('');
+			queryClient.invalidateQueries({ queryKey: ['swapRatings', request.swap_id] });
+			toast.success('Rating submitted!');
+		},
+		onError: (err: Error) => toast.error(err.message || 'Failed to submit rating'),
+	});
+
+	const markCompleteMutation = useMutation({
+		mutationFn: () => api.swaps.markComplete(request.swap_id),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['swaps'] });
+			toast.success('Marked as complete!');
+		},
+		onError: (err: Error) => toast.error(err.message || 'Failed to mark complete'),
+	});
+
+	const undoCompleteMutation = useMutation({
+		mutationFn: () => api.swaps.undoComplete(request.swap_id),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['swaps'] });
+			toast.success('Completion undone');
+		},
+		onError: (err: Error) => toast.error(err.message || 'Failed to undo completion'),
+	});
+
+	return (
+		<Card className="hover:shadow-md transition-shadow duration-200">
+			<CardHeader>
+				<div className="flex items-start justify-between">
+					<div className="flex items-center space-x-3">
+						<Avatar
+							src={other.has_photo ? getPhotoUrl(other.user_id) : undefined}
+							alt={other.name}
+							fallback={
+								other.name
+									.split(' ')
+									.map((n) => n[0])
+									.join('') || 'U'
+							}
+							className="w-12 h-12"
+						/>
+						<div>
+							<h3 className="font-semibold text-lg">{other.name}</h3>
+							<p className="text-sm text-muted-foreground">
+								{new Date(request.created_at).toLocaleDateString()}
+							</p>
+						</div>
+					</div>
+					<div className="flex items-center space-x-2">
+						{getStatusIcon(request.status)}
+						{getStatusBadge(request.status)}
+					</div>
+				</div>
+			</CardHeader>
+
+			<CardContent className="space-y-4">
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+					<div className="p-3 bg-muted rounded-lg">
+						<p className="text-sm font-medium text-muted-foreground mb-1">
+							{isIncoming ? 'They Offer' : 'You Offer'}
+						</p>
+						<p className="font-medium">{request.offered_skill.name}</p>
+					</div>
+					<div className="p-3 bg-muted rounded-lg">
+						<p className="text-sm font-medium text-muted-foreground mb-1">
+							{isIncoming ? 'They Want' : 'You Want'}
+						</p>
+						<p className="font-medium">{request.wanted_skill.name}</p>
+					</div>
+				</div>
+
+				{/* ── Actions ─────────────────────────────────────────── */}
+				<div className="flex flex-wrap gap-2 pt-2">
+					{/* Pending – incoming: accept / decline */}
+					{request.status === 'pending' && isIncoming && (
+						<>
+							<Button
+								onClick={() => onStatusChange(request.swap_id, 'accepted')}
+								disabled={statusPending}
+								className="flex-1"
+							>
+								{statusPending ? (
+									<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+								) : (
+									<CheckCircle className="w-4 h-4 mr-2" />
+								)}
+								Accept
+							</Button>
+							<Button
+								variant="outline"
+								onClick={() => onStatusChange(request.swap_id, 'rejected')}
+								disabled={statusPending}
+								className="flex-1"
+							>
+								<XCircle className="w-4 h-4 mr-2" />
+								Decline
+							</Button>
+						</>
+					)}
+
+					{/* Pending – outgoing: cancel */}
+					{request.status === 'pending' && !isIncoming && (
+						<Button
+							variant="outline"
+							onClick={() => onStatusChange(request.swap_id, 'cancelled')}
+							disabled={statusPending}
+							className="w-full"
+						>
+							Cancel Request
+						</Button>
+					)}
+
+					{/* ── Accepted (In Progress) ──────────────────────── */}
+					{request.status === 'accepted' && (
+						<div className="w-full space-y-3">
+							{/* Completion status */}
+							<div className="p-3 rounded-lg border border-border bg-muted/50">
+								<p className="text-xs font-medium text-muted-foreground mb-2">Completion Status</p>
+								<div className="flex items-center gap-3 text-sm">
+									<span className={myCompleted ? 'text-green-600 dark:text-green-400 font-medium' : 'text-muted-foreground'}>
+										{myCompleted ? '✓ You marked complete' : '○ You: not yet'}
+									</span>
+									<span className="text-border">|</span>
+									<span className={theirCompleted ? 'text-green-600 dark:text-green-400 font-medium' : 'text-muted-foreground'}>
+										{theirCompleted ? `✓ ${other.name} marked complete` : `○ ${other.name}: not yet`}
+									</span>
+								</div>
+							</div>
+
+							{/* Action buttons */}
+							<div className="flex gap-2">
+								<Link href={`/messages?swap=${request.swap_id}`} className="flex-1">
+									<Button variant="outline" className="w-full">
+										<MessageCircle className="w-4 h-4 mr-2" />
+										Open Chat
+									</Button>
+								</Link>
+
+								{!myCompleted ? (
+									<Button
+										onClick={() => markCompleteMutation.mutate()}
+										disabled={markCompleteMutation.isPending}
+										className="flex-1"
+									>
+										{markCompleteMutation.isPending ? (
+											<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+										) : (
+											<CircleCheckBig className="w-4 h-4 mr-2" />
+										)}
+										Mark Complete
+									</Button>
+								) : (
+									<Button
+										variant="outline"
+										onClick={() => undoCompleteMutation.mutate()}
+										disabled={undoCompleteMutation.isPending}
+										className="flex-1"
+									>
+										{undoCompleteMutation.isPending ? (
+											<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+										) : (
+											<Undo2 className="w-4 h-4 mr-2" />
+										)}
+										Undo Complete
+									</Button>
+								)}
+							</div>
+						</div>
+					)}
+
+					{/* ── Completed – Rating section ──────────────────── */}
+					{request.status === 'completed' && (
+						<div className="w-full space-y-3">
+							{/* Chat link */}
+							<Link href={`/messages?swap=${request.swap_id}`}>
+								<Button variant="ghost" size="sm" className="text-muted-foreground">
+									<MessageCircle className="w-3.5 h-3.5 mr-1.5" />
+									View Chat
+								</Button>
+							</Link>
+
+							{/* Show existing ratings */}
+							{myRating && (
+								<div className="p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 rounded-lg">
+									<div className="flex items-center gap-2">
+										<span className="text-xs font-medium text-green-700 dark:text-green-400">You rated</span>
+										<div className="flex items-center gap-0.5">
+											{[1, 2, 3, 4, 5].map((s) => (
+												<Star
+													key={s}
+													className={`w-3.5 h-3.5 ${
+														s <= myRating.score
+															? 'fill-yellow-400 text-yellow-400'
+															: 'text-gray-300 dark:text-gray-600'
+													}`}
+												/>
+											))}
+										</div>
+									</div>
+									{myRating.comment && (
+										<p className="text-sm text-foreground mt-1">{myRating.comment}</p>
+									)}
+								</div>
+							)}
+							{theirRating && (
+								<div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg">
+									<div className="flex items-center gap-2">
+										<span className="text-xs font-medium text-blue-700 dark:text-blue-400">{other.name}&apos;s rating</span>
+										<div className="flex items-center gap-0.5">
+											{[1, 2, 3, 4, 5].map((s) => (
+												<Star
+													key={s}
+													className={`w-3.5 h-3.5 ${
+														s <= theirRating.score
+															? 'fill-yellow-400 text-yellow-400'
+															: 'text-gray-300 dark:text-gray-600'
+													}`}
+												/>
+											))}
+										</div>
+									</div>
+									{theirRating.comment && (
+										<p className="text-sm text-foreground mt-1">{theirRating.comment}</p>
+									)}
+								</div>
+							)}
+
+							{/* Rating form or button */}
+							{!myRating && (
+								<>
+									{showRatingForm ? (
+										<div className="p-3 border border-border rounded-lg space-y-3">
+											<div className="flex items-center gap-1">
+												{[1, 2, 3, 4, 5].map((s) => (
+													<Star
+														key={s}
+														className={`w-5 h-5 cursor-pointer ${
+															s <= ratingScore
+																? 'fill-yellow-400 text-yellow-400'
+																: 'text-gray-300 dark:text-gray-600'
+														}`}
+														onClick={() => setRatingScore(s)}
+													/>
+												))}
+											</div>
+											<input
+												type="text"
+												placeholder="Leave a comment (optional)"
+												value={ratingComment}
+												onChange={(e) => setRatingComment(e.target.value)}
+												className="w-full text-sm border border-border rounded-md px-3 py-2 bg-background"
+											/>
+											<div className="flex gap-2">
+												<Button
+													size="sm"
+													onClick={() =>
+														createRatingMutation.mutate({
+															swap_id: request.swap_id,
+															ratee_id: other.user_id,
+															score: ratingScore,
+															comment: ratingComment || undefined,
+														})
+													}
+													disabled={createRatingMutation.isPending}
+												>
+													{createRatingMutation.isPending ? (
+														<Loader2 className="w-4 h-4 animate-spin" />
+													) : (
+														'Submit Rating'
+													)}
+												</Button>
+												<Button
+													size="sm"
+													variant="outline"
+													onClick={() => setShowRatingForm(false)}
+												>
+													Cancel
+												</Button>
+											</div>
+										</div>
+									) : (
+										<Button
+											variant="outline"
+											className="w-full"
+											onClick={() => setShowRatingForm(true)}
+										>
+											<Star className="w-4 h-4 mr-2" />
+											Rate Exchange
+										</Button>
+									)}
+								</>
+							)}
+						</div>
+					)}
+				</div>
+			</CardContent>
+		</Card>
+	);
+}
 
 export default function SwapsPage() {
-	const [activeTab, setActiveTab] = useState('incoming');
-	const currentUserId = '1'; // Sarah Johnson
-	const user = getUserById(currentUserId);
-	const allSwapRequests = getSwapRequestsByUserId(currentUserId);
+	return (
+		<Suspense fallback={
+			<div className="min-h-screen bg-background flex items-center justify-center">
+				<Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+			</div>
+		}>
+			<SwapsContent />
+		</Suspense>
+	);
+}
 
-	if (!user) {
+function SwapsContent() {
+	const { user, isLoading: authLoading } = useAuth(true);
+	const searchParams = useSearchParams();
+	const router = useRouter();
+	const requestUserId = searchParams.get('request');
+	const queryClient = useQueryClient();
+	const [activeTab, setActiveTab] = useState('incoming');
+
+	const { data: swapData, isLoading: swapsLoading } = useQuery({
+		queryKey: ['swaps'],
+		queryFn: () => api.swaps.list(),
+		enabled: !!user,
+	});
+
+	const updateStatusMutation = useMutation({
+		mutationFn: ({ id, status }: { id: string; status: 'accepted' | 'rejected' | 'cancelled' }) =>
+			api.swaps.updateStatus(id, status),
+		onSuccess: (_data, variables) => {
+			queryClient.invalidateQueries({ queryKey: ['swaps'] });
+			if (variables.status === 'accepted') {
+				toast.success('Swap accepted! Start chatting to coordinate.');
+				router.push(`/messages?swap=${variables.id}`);
+			}
+		},
+		onError: (err: Error) => toast.error(err.message || 'Failed to update swap status'),
+	});
+
+	// Swap request creation
+	const [showCreateDialog, setShowCreateDialog] = useState(false);
+	const [targetUser, setTargetUser] = useState<UserProfileResponse | null>(null);
+	const [selectedOffered, setSelectedOffered] = useState<Set<string>>(new Set());
+	const [selectedWanted, setSelectedWanted] = useState<Set<string>>(new Set());
+
+	const { data: myProfile } = useQuery({
+		queryKey: ['profile'],
+		queryFn: () => api.users.getProfile(),
+		enabled: !!user && !!requestUserId,
+	});
+
+	const { data: targetProfile } = useQuery({
+		queryKey: ['publicProfile', requestUserId],
+		queryFn: () => api.users.getPublicProfile(requestUserId!),
+		enabled: !!requestUserId,
+	});
+
+	useEffect(() => {
+		if (requestUserId && targetProfile) {
+			setTargetUser(targetProfile);
+			setShowCreateDialog(true);
+		}
+	}, [requestUserId, targetProfile]);
+
+	const [swapCreationPending, setSwapCreationPending] = useState(false);
+
+	const handleCreateSwap = async () => {
+		if (!targetUser || selectedOffered.size === 0 || selectedWanted.size === 0) return;
+		setSwapCreationPending(true);
+		try {
+			const pairs = Array.from(selectedOffered).flatMap((o) =>
+				Array.from(selectedWanted).map((w) => ({ offered: o, wanted: w }))
+			);
+			for (const pair of pairs) {
+				await api.swaps.create({
+					responder_id: targetUser.user_id,
+					offered_skill_id: pair.offered,
+					wanted_skill_id: pair.wanted,
+				});
+			}
+			setShowCreateDialog(false);
+			setTargetUser(null);
+			setSelectedOffered(new Set());
+			setSelectedWanted(new Set());
+			router.replace('/swaps');
+			queryClient.invalidateQueries({ queryKey: ['swaps'] });
+			toast.success(`Created ${pairs.length} swap request${pairs.length > 1 ? 's' : ''}`);
+		} catch (err: unknown) {
+			toast.error(err instanceof Error ? err.message : 'Failed to create swap request');
+		} finally {
+			setSwapCreationPending(false);
+		}
+	};
+
+	const closeCreateDialog = () => {
+		setShowCreateDialog(false);
+		setTargetUser(null);
+		setSelectedOffered(new Set());
+		setSelectedWanted(new Set());
+		router.replace('/swaps');
+	};
+
+	const toggleOffered = (id: string) => {
+		setSelectedOffered((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
+
+	const toggleWanted = (id: string) => {
+		setSelectedWanted((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
+
+	if (authLoading || swapsLoading) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
-				<div className="text-center">
-					<h1 className="text-2xl font-bold text-foreground mb-2">User not found</h1>
-					<p className="text-muted-foreground">Unable to load swap requests.</p>
-				</div>
+				<Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
 			</div>
 		);
 	}
 
-	const incomingRequests = allSwapRequests.filter((req) => req.responderId === currentUserId);
-	const outgoingRequests = allSwapRequests.filter((req) => req.requesterId === currentUserId);
-
-	const getStatusIcon = (status: string) => {
-		switch (status) {
-			case 'accepted':
-				return <CheckCircle className="w-4 h-4 text-green-500" />;
-			case 'rejected':
-				return <XCircle className="w-4 h-4 text-red-500" />;
-			case 'pending':
-				return <Clock className="w-4 h-4 text-yellow-500" />;
-			default:
-				return null;
-		}
-	};
-
-	const handleAcceptRequest = (swapId: string) => {
-		console.log('Accepting swap request:', swapId);
-		// In a real app, this would update the swap request status
-	};
-
-	const handleRejectRequest = (swapId: string) => {
-		console.log('Rejecting swap request:', swapId);
-		// In a real app, this would update the swap request status
-	};
-
-	const handleCancelRequest = (swapId: string) => {
-		console.log('Canceling swap request:', swapId);
-		// In a real app, this would update the swap request status
-	};
-
-	const SwapRequestCard = ({ request, isIncoming }: { request: SwapRequest; isIncoming: boolean }) => {
-		const otherUser = isIncoming
-			? getUserById(request.requesterId)
-			: getUserById(request.responderId);
-
-		return (
-			<Card className="hover:shadow-md transition-shadow duration-200">
-				<CardHeader>
-					<div className="flex items-start justify-between">
-						<div className="flex items-center space-x-3">
-							<Avatar
-								src={otherUser?.photoUrl || undefined}
-								alt={otherUser?.name || 'User'}
-								fallback={
-									otherUser?.name
-										?.split(' ')
-										.map((n) => n[0])
-										.join('') || 'U'
-								}
-								className="w-12 h-12"
-							/>
-							<div>
-								<h3 className="font-semibold text-lg">{otherUser?.name}</h3>
-								<p className="text-sm text-muted-foreground">
-									{new Date(request.createdAt).toLocaleDateString()}
-								</p>
-							</div>
-						</div>
-						<div className="flex items-center space-x-2">
-							{getStatusIcon(request.status)}
-							<Badge
-								variant={
-									request.status === 'accepted'
-										? 'default'
-										: request.status === 'rejected'
-											? 'destructive'
-											: 'secondary'
-								}
-							>
-								{request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-							</Badge>
-						</div>
-					</div>
-				</CardHeader>
-
-				<CardContent className="space-y-4">
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-						<div className="p-3 bg-muted rounded-lg">
-							<p className="text-sm font-medium text-muted-foreground mb-1">
-								{isIncoming ? 'They Offer' : 'You Offer'}
-							</p>
-							<p className="font-medium">{request.offeredSkill.name}</p>
-							{request.offeredSkill.description && (
-								<p className="text-xs text-muted-foreground mt-1">
-									{request.offeredSkill.description}
-								</p>
-							)}
-						</div>
-						<div className="p-3 bg-muted rounded-lg">
-							<p className="text-sm font-medium text-muted-foreground mb-1">
-								{isIncoming ? 'They Want' : 'You Want'}
-							</p>
-							<p className="font-medium">{request.wantedSkill.name}</p>
-							{request.wantedSkill.description && (
-								<p className="text-xs text-muted-foreground mt-1">
-									{request.wantedSkill.description}
-								</p>
-							)}
-						</div>
-					</div>
-
-					{/* Actions */}
-					<div className="flex space-x-2 pt-2">
-						{request.status === 'pending' && isIncoming && (
-							<>
-								<Button
-									onClick={() => handleAcceptRequest(request.swapId)}
-									className="flex-1"
-								>
-									<CheckCircle className="w-4 h-4 mr-2" />
-									Accept
-								</Button>
-								<Button
-									variant="outline"
-									onClick={() => handleRejectRequest(request.swapId)}
-									className="flex-1"
-								>
-									<XCircle className="w-4 h-4 mr-2" />
-									Decline
-								</Button>
-							</>
-						)}
-						{request.status === 'pending' && !isIncoming && (
-							<Button
-								variant="outline"
-								onClick={() => handleCancelRequest(request.swapId)}
-								className="w-full"
-							>
-								Cancel Request
-							</Button>
-						)}
-						{request.status === 'accepted' && (
-							<Button className="w-full">
-								<MessageSquare className="w-4 h-4 mr-2" />
-								Start Exchange
-							</Button>
-						)}
-						{request.status === 'rejected' && (
-							<Button variant="outline" className="w-full">
-								<MessageSquare className="w-4 h-4 mr-2" />
-								Message
-							</Button>
-						)}
-					</div>
-				</CardContent>
-			</Card>
-		);
-	};
+	const incoming = swapData?.received ?? [];
+	const outgoing = swapData?.sent ?? [];
+	const allSwaps = [...incoming, ...outgoing];
 
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Header */}
-				<div className="mb-8">
-					<h1 className="text-3xl font-bold text-foreground mb-2">Swap Requests</h1>
-					<p className="text-muted-foreground">Manage your skill exchange requests</p>
+				<div className="flex items-center justify-between mb-8">
+					<div>
+						<h1 className="text-3xl font-bold text-foreground mb-2">Swap Requests</h1>
+						<p className="text-muted-foreground">Manage your skill exchange requests</p>
+					</div>
+					<Link href="/browse">
+						<Button>
+							<ArrowRight className="w-4 h-4 mr-2" />
+							Find People
+						</Button>
+					</Link>
 				</div>
+
+				{/* Create Swap Request Dialog */}
+				{showCreateDialog && targetUser && (
+					<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+						<Card className="w-full max-w-md mx-4">
+							<CardHeader>
+								<div className="flex items-center justify-between">
+									<h2 className="text-lg font-semibold">Request Skill Swap</h2>
+									<Button variant="ghost" size="sm" onClick={closeCreateDialog}>
+										<X className="w-4 h-4" />
+									</Button>
+								</div>
+							</CardHeader>
+							<CardContent className="space-y-4">
+								{/* Target user info */}
+								<div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+									<Avatar
+										src={targetUser.has_photo ? getPhotoUrl(targetUser.user_id) : undefined}
+										alt={targetUser.name}
+										fallback={targetUser.name
+											.split(' ')
+											.map((n) => n[0])
+											.join('')}
+										className="w-10 h-10"
+									/>
+									<div>
+										<p className="font-medium">{targetUser.name}</p>
+										{targetUser.location && (
+											<p className="text-sm text-muted-foreground">{targetUser.location}</p>
+										)}
+									</div>
+								</div>
+
+								{/* Skills you can teach them */}
+								<div>
+									<label className="text-sm font-medium mb-2 block">
+										Skills you offer{' '}
+										<span className="text-muted-foreground font-normal">(matching what they want)</span>
+									</label>
+									<div className="flex flex-wrap gap-2">
+										{(myProfile?.skills_offered ?? [])
+											.filter((skill: SkillResponse) => {
+												const theirWantedIds = new Set(
+													(targetUser.skills_wanted ?? []).map((s: SkillResponse) => s.skill_id)
+												);
+												return theirWantedIds.has(skill.skill_id);
+											})
+											.map((skill: SkillResponse) => (
+												<button
+													key={skill.skill_id}
+													type="button"
+													onClick={() => toggleOffered(skill.skill_id)}
+													className={`inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium border transition-colors cursor-pointer ${
+														selectedOffered.has(skill.skill_id)
+															? 'bg-primary text-primary-foreground border-primary'
+															: 'bg-background text-foreground border-border hover:bg-muted'
+													}`}
+												>
+													{skill.name}
+													{selectedOffered.has(skill.skill_id) && (
+														<CheckCircle className="w-3.5 h-3.5 ml-1.5" />
+													)}
+												</button>
+											))}
+										{(myProfile?.skills_offered ?? []).filter((skill: SkillResponse) => {
+											const theirWantedIds = new Set(
+												(targetUser.skills_wanted ?? []).map((s: SkillResponse) => s.skill_id)
+											);
+											return theirWantedIds.has(skill.skill_id);
+										}).length === 0 && (
+											<p className="text-sm text-muted-foreground">No matching skills found</p>
+										)}
+									</div>
+								</div>
+
+								{/* Skills you want from them */}
+								<div>
+									<label className="text-sm font-medium mb-2 block">
+										Skills you want from them
+									</label>
+									<div className="flex flex-wrap gap-2">
+										{(targetUser.skills_offered ?? []).map((skill: SkillResponse) => (
+											<button
+												key={skill.skill_id}
+												type="button"
+												onClick={() => toggleWanted(skill.skill_id)}
+												className={`inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium border transition-colors cursor-pointer ${
+													selectedWanted.has(skill.skill_id)
+														? 'bg-primary text-primary-foreground border-primary'
+														: 'bg-background text-foreground border-border hover:bg-muted'
+												}`}
+											>
+												{skill.name}
+												{selectedWanted.has(skill.skill_id) && (
+													<CheckCircle className="w-3.5 h-3.5 ml-1.5" />
+												)}
+											</button>
+										))}
+									</div>
+								</div>
+
+								<div className="flex gap-2 pt-2">
+									<Button
+										className="flex-1"
+										onClick={handleCreateSwap}
+										disabled={selectedOffered.size === 0 || selectedWanted.size === 0 || swapCreationPending}
+									>
+										{swapCreationPending ? (
+											<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+										) : (
+											<ArrowRightLeft className="w-4 h-4 mr-2" />
+										)}
+										{selectedOffered.size > 0 && selectedWanted.size > 0
+											? `Send ${selectedOffered.size * selectedWanted.size} Request${selectedOffered.size * selectedWanted.size > 1 ? 's' : ''}`
+											: 'Send Request'}
+									</Button>
+									<Button variant="outline" onClick={closeCreateDialog}>
+										Cancel
+									</Button>
+								</div>
+							</CardContent>
+						</Card>
+					</div>
+				)}
 
 				{/* Stats */}
 				<div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -194,11 +668,7 @@ export default function SwapsPage() {
 								<Clock className="w-5 h-5 text-yellow-500" />
 								<div>
 									<p className="text-2xl font-bold">
-										{
-											incomingRequests.filter(
-												(req) => req.status === 'pending'
-											).length
-										}
+										{allSwaps.filter((r) => r.status === 'pending').length}
 									</p>
 									<p className="text-sm text-muted-foreground">Pending</p>
 								</div>
@@ -208,16 +678,12 @@ export default function SwapsPage() {
 					<Card>
 						<CardContent className="p-4">
 							<div className="flex items-center space-x-2">
-								<CheckCircle className="w-5 h-5 text-green-500" />
+								<MessageCircle className="w-5 h-5 text-blue-500" />
 								<div>
 									<p className="text-2xl font-bold">
-										{
-											allSwapRequests.filter(
-												(req) => req.status === 'accepted'
-											).length
-										}
+										{allSwaps.filter((r) => r.status === 'accepted').length}
 									</p>
-									<p className="text-sm text-muted-foreground">Accepted</p>
+									<p className="text-sm text-muted-foreground">In Progress</p>
 								</div>
 							</div>
 						</CardContent>
@@ -225,16 +691,12 @@ export default function SwapsPage() {
 					<Card>
 						<CardContent className="p-4">
 							<div className="flex items-center space-x-2">
-								<XCircle className="w-5 h-5 text-red-500" />
+								<CircleCheckBig className="w-5 h-5 text-green-500" />
 								<div>
 									<p className="text-2xl font-bold">
-										{
-											allSwapRequests.filter(
-												(req) => req.status === 'rejected'
-											).length
-										}
+										{allSwaps.filter((r) => r.status === 'completed').length}
 									</p>
-									<p className="text-sm text-muted-foreground">Rejected</p>
+									<p className="text-sm text-muted-foreground">Completed</p>
 								</div>
 							</div>
 						</CardContent>
@@ -242,9 +704,9 @@ export default function SwapsPage() {
 					<Card>
 						<CardContent className="p-4">
 							<div className="flex items-center space-x-2">
-								<User className="w-5 h-5 text-blue-500" />
+								<User className="w-5 h-5 text-purple-500" />
 								<div>
-									<p className="text-2xl font-bold">{allSwapRequests.length}</p>
+									<p className="text-2xl font-bold">{allSwaps.length}</p>
 									<p className="text-sm text-muted-foreground">Total</p>
 								</div>
 							</div>
@@ -256,70 +718,54 @@ export default function SwapsPage() {
 				<Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
 					<TabsList className="grid w-full grid-cols-2">
 						<TabsTrigger value="incoming">
-							Incoming Requests ({incomingRequests.length})
+							Incoming ({incoming.length})
 						</TabsTrigger>
 						<TabsTrigger value="outgoing">
-							Outgoing Requests ({outgoingRequests.length})
+							Outgoing ({outgoing.length})
 						</TabsTrigger>
 					</TabsList>
 
 					<TabsContent value="incoming" className="space-y-4">
-						{incomingRequests.length > 0 ? (
-							incomingRequests.map((request) => (
-								<SwapRequestCard
-									key={request.swapId}
+						{incoming.length > 0 ? (
+							incoming.map((request) => (
+								<SwapCard
+									key={request.swap_id}
 									request={request}
-									isIncoming={true}
+									isIncoming
+									currentUserId={user!.user_id}
+									onStatusChange={(id, status) => updateStatusMutation.mutate({ id, status })}
+									statusPending={updateStatusMutation.isPending}
 								/>
 							))
 						) : (
-							<Card>
-								<CardContent className="p-8 text-center">
-									<div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-										<User className="w-8 h-8 text-muted-foreground" />
-									</div>
-									<h3 className="text-lg font-medium text-foreground mb-2">
-										No incoming requests
-									</h3>
-									<p className="text-muted-foreground mb-4">
-										You don&apos;t have any pending swap requests at the moment.
-									</p>
-									<Button>
-										<ArrowRight className="w-4 h-4 mr-2" />
-										Browse People
-									</Button>
-								</CardContent>
-							</Card>
+							<div className="text-center py-12 text-muted-foreground">
+								<p>No incoming swap requests yet</p>
+							</div>
 						)}
 					</TabsContent>
 
 					<TabsContent value="outgoing" className="space-y-4">
-						{outgoingRequests.length > 0 ? (
-							outgoingRequests.map((request) => (
-								<SwapRequestCard
-									key={request.swapId}
+						{outgoing.length > 0 ? (
+							outgoing.map((request) => (
+								<SwapCard
+									key={request.swap_id}
 									request={request}
 									isIncoming={false}
+									currentUserId={user!.user_id}
+									onStatusChange={(id, status) => updateStatusMutation.mutate({ id, status })}
+									statusPending={updateStatusMutation.isPending}
 								/>
 							))
 						) : (
-							<Card>
-								<CardContent className="p-8 text-center">
-									<div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-										<ArrowRight className="w-8 h-8 text-muted-foreground" />
-									</div>
-									<h3 className="text-lg font-medium text-foreground mb-2">
-										No outgoing requests
-									</h3>
-									<p className="text-muted-foreground mb-4">
-										You haven&apos;t sent any swap requests yet.
-									</p>
-									<Button>
-										<ArrowRight className="w-4 h-4 mr-2" />
-										Find People to Swap With
-									</Button>
-								</CardContent>
-							</Card>
+							<div className="text-center py-12 text-muted-foreground">
+								<p>
+									No outgoing swap requests yet.{' '}
+									<Link href="/browse" className="text-primary underline">
+										Browse users
+									</Link>{' '}
+									to start!
+								</p>
+							</div>
 						)}
 					</TabsContent>
 				</Tabs>

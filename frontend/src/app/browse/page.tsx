@@ -1,44 +1,58 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { UserCard } from '@/components/UserCard';
-import { dummyUsers, dummySkills } from '@/lib/dummy-data';
 import { Search, Filter, MapPin } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Card, CardContent } from '@/components/ui/card';
 
 export default function BrowsePage() {
+	const { user } = useAuth(true);
 	const [searchTerm, setSearchTerm] = useState('');
-	const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
 	const [locationFilter, setLocationFilter] = useState('');
+	const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+	const [page, setPage] = useState(1);
+	const limit = 12;
 
-	const filteredUsers = useMemo(() => {
-		return dummyUsers.filter((user) => {
-			// Search by name
-			const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase());
+	const { data: searchResults, isLoading: usersLoading } = useQuery({
+		queryKey: ['browse-users', searchTerm, locationFilter, page],
+		queryFn: () =>
+			api.users.searchPublic({
+				search_term: searchTerm || undefined,
+				location: locationFilter || undefined,
+				page,
+				limit,
+			}),
+		enabled: !!user,
+	});
 
-			// Filter by skills
-			const matchesSkills =
-				selectedSkills.length === 0 ||
-				selectedSkills.some(
-					(skillId) =>
-						user.skillsOffered
-							.filter((skill) => skill)
-							.some((skill) => skill.skillId === skillId) ||
-						user.skillsWanted
-							.filter((skill) => skill)
-							.some((skill) => skill.skillId === skillId)
+	const { data: allSkills } = useQuery({
+		queryKey: ['skills'],
+		queryFn: () => api.skills.list(),
+		enabled: !!user,
+	});
+
+	const users = searchResults?.users ?? [];
+	const totalPages = searchResults?.total_pages ?? 1;
+	const total = searchResults?.total ?? 0;
+
+	// Client-side skill filtering (search API doesn't support skill filtering)
+	const filteredUsers =
+		selectedSkills.length === 0
+			? users
+			: users.filter((u) =>
+					selectedSkills.some(
+						(skillId) =>
+							u.skills_offered.some((s) => s.skill_id === skillId) ||
+							u.skills_wanted.some((s) => s.skill_id === skillId)
+					)
 				);
-
-			// Filter by location
-			const matchesLocation =
-				!locationFilter ||
-				user.location?.toLowerCase().includes(locationFilter.toLowerCase());
-
-			return matchesSearch && matchesSkills && matchesLocation;
-		});
-	}, [searchTerm, selectedSkills, locationFilter]);
 
 	const toggleSkillFilter = (skillId: string) => {
 		setSelectedSkills((prev) =>
@@ -50,15 +64,8 @@ export default function BrowsePage() {
 		setSearchTerm('');
 		setSelectedSkills([]);
 		setLocationFilter('');
+		setPage(1);
 	};
-
-	const uniqueLocations = [
-		...new Set(
-			dummyUsers
-				.map((user) => user.location)
-				.filter((location): location is string => Boolean(location))
-		)
-	];
 
 	return (
 		<div className="min-h-screen bg-background">
@@ -73,58 +80,56 @@ export default function BrowsePage() {
 
 				{/* Search and Filters */}
 				<div className="mb-8 space-y-4">
-					{/* Search Bar */}
 					<div className="relative">
 						<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
 						<Input
-							placeholder="Search by name..."
+							placeholder="Search by name or skill..."
 							value={searchTerm}
-							onChange={(e) => setSearchTerm(e.target.value)}
+							onChange={(e) => {
+								setSearchTerm(e.target.value);
+								setPage(1);
+							}}
 							className="pl-10"
 						/>
 					</div>
 
-					{/* Filters */}
 					<div className="flex flex-wrap gap-4 items-center">
 						<div className="flex items-center space-x-2">
 							<Filter className="w-4 h-4 text-muted-foreground" />
 							<span className="text-sm font-medium">Filters:</span>
 						</div>
 
-						{/* Location Filter */}
 						<div className="flex items-center space-x-2">
 							<MapPin className="w-4 h-4 text-muted-foreground" />
-							<select
+							<Input
+								placeholder="Filter by location..."
 								value={locationFilter}
-								onChange={(e) => setLocationFilter(e.target.value)}
-								className="text-sm border border-border rounded-md px-3 py-1 bg-background"
-							>
-								<option value="">All Locations</option>
-								{uniqueLocations.map((location) => (
-									<option key={location} value={location}>
-										{location}
-									</option>
-								))}
-							</select>
+								onChange={(e) => {
+									setLocationFilter(e.target.value);
+									setPage(1);
+								}}
+								className="w-48 h-8 text-sm"
+							/>
 						</div>
 
-						{/* Skill Filters */}
-						<div className="flex flex-wrap gap-2">
-							{dummySkills.map((skill) => (
-								<Badge
-									key={skill.skillId}
-									variant={
-										selectedSkills.includes(skill.skillId)
-											? 'default'
-											: 'outline'
-									}
-									className="cursor-pointer hover:bg-primary/10"
-									onClick={() => toggleSkillFilter(skill.skillId)}
-								>
-									{skill.name}
-								</Badge>
-							))}
-						</div>
+						{allSkills && (
+							<div className="flex flex-wrap gap-2">
+								{allSkills.slice(0, 10).map((skill) => (
+									<Badge
+										key={skill.skill_id}
+										variant={
+											selectedSkills.includes(skill.skill_id)
+												? 'default'
+												: 'outline'
+										}
+										className="cursor-pointer hover:bg-primary/10"
+										onClick={() => toggleSkillFilter(skill.skill_id)}
+									>
+										{skill.name}
+									</Badge>
+								))}
+							</div>
+						)}
 
 						{(searchTerm || selectedSkills.length > 0 || locationFilter) && (
 							<Button
@@ -139,33 +144,59 @@ export default function BrowsePage() {
 					</div>
 				</div>
 
-				{/* Results */}
+				{/* Results count */}
 				<div className="mb-6">
 					<div className="flex items-center justify-between">
 						<h2 className="text-xl font-semibold">
 							{filteredUsers.length}{' '}
 							{filteredUsers.length === 1 ? 'person' : 'people'} found
 						</h2>
-						{filteredUsers.length > 0 && (
+						{total > 0 && (
 							<p className="text-sm text-muted-foreground">
-								Showing {filteredUsers.length} of {dummyUsers.length} users
+								Page {page} of {totalPages} ({total} total)
 							</p>
 						)}
 					</div>
 				</div>
 
-				{/* User Grid */}
-				{filteredUsers.length > 0 ? (
+				{/* Loading */}
+				{usersLoading && (
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-						{filteredUsers.map((user) => (
-							<UserCard
-								key={user.userId}
-								user={user}
-								currentUserId="1" // Assuming current user is Sarah Johnson
-							/>
+						{[1, 2, 3, 4, 5, 6].map((i) => (
+							<Card key={i}>
+								<CardContent className="p-6">
+									<div className="flex items-center gap-4 mb-4">
+										<Skeleton className="h-12 w-12 rounded-full" />
+										<div>
+											<Skeleton className="h-5 w-28 mb-1" />
+											<Skeleton className="h-3 w-20" />
+										</div>
+									</div>
+									<div className="space-y-2">
+										<Skeleton className="h-4 w-full" />
+										<div className="flex gap-2">
+											<Skeleton className="h-6 w-16 rounded-full" />
+											<Skeleton className="h-6 w-20 rounded-full" />
+											<Skeleton className="h-6 w-14 rounded-full" />
+										</div>
+									</div>
+								</CardContent>
+							</Card>
 						))}
 					</div>
-				) : (
+				)}
+
+				{/* User Grid */}
+				{!usersLoading && filteredUsers.length > 0 && (
+					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+						{filteredUsers.map((u) => (
+							<UserCard key={u.user_id} user={u} currentUserId={user?.user_id} />
+						))}
+					</div>
+				)}
+
+				{/* Empty State */}
+				{!usersLoading && filteredUsers.length === 0 && (
 					<div className="text-center py-12">
 						<div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
 							<Search className="w-8 h-8 text-muted-foreground" />
@@ -178,39 +209,40 @@ export default function BrowsePage() {
 					</div>
 				)}
 
-				{/* Popular Skills Section */}
-				<div className="mt-16">
-					<h2 className="text-2xl font-bold text-foreground mb-6">Popular Skills</h2>
-					<div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-						{dummySkills.map((skill) => {
-							const userCount = dummyUsers.filter(
-								(user) =>
-									user.skillsOffered
-										.filter((s) => s)
-										.some((s) => s.skillId === skill.skillId) ||
-									user.skillsWanted
-										.filter((s) => s)
-										.some((s) => s.skillId === skill.skillId)
-							).length;
-
+				{/* Pagination */}
+				{totalPages > 1 && (
+					<div className="flex items-center justify-center gap-2 mt-8">
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={page <= 1}
+							onClick={() => setPage((p) => p - 1)}
+						>
+							Previous
+						</Button>
+						{Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+							const pageNum = i + 1;
 							return (
-								<div
-									key={skill.skillId}
-									className="p-4 border border-border rounded-lg hover:border-primary/50 transition-colors cursor-pointer"
-									onClick={() => toggleSkillFilter(skill.skillId)}
+								<Button
+									key={pageNum}
+									variant={page === pageNum ? 'default' : 'outline'}
+									size="sm"
+									onClick={() => setPage(pageNum)}
 								>
-									<h3 className="font-medium text-sm mb-1">{skill.name}</h3>
-									<p className="text-xs text-muted-foreground mb-2">
-										{skill.description}
-									</p>
-									<p className="text-xs text-primary">
-										{userCount} {userCount === 1 ? 'person' : 'people'}
-									</p>
-								</div>
+									{pageNum}
+								</Button>
 							);
 						})}
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={page >= totalPages}
+							onClick={() => setPage((p) => p + 1)}
+						>
+							Next
+						</Button>
 					</div>
-				</div>
+				)}
 			</div>
 		</div>
 	);
