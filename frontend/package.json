@@ -7,6 +7,8 @@
 		"build": "next build",
 		"start": "next start",
 		"lint": "next lint",
+		"test": "vitest run",
+		"test:watch": "vitest",
 		"format": "prettier . --write"
 	},
 	"dependencies": {
@@ -15,23 +17,34 @@
 		"@radix-ui/react-slot": "^1.2.3",
 		"@studio-freight/lenis": "^1.0.42",
 		"@tanstack/react-query": "^5.83.0",
+		"@tiptap/extension-image": "^3.21.0",
+		"@tiptap/extension-link": "^3.21.0",
+		"@tiptap/extension-placeholder": "^3.21.0",
+		"@tiptap/pm": "^3.21.0",
+		"@tiptap/react": "^3.21.0",
+		"@tiptap/starter-kit": "^3.21.0",
+		"browser-image-compression": "^2.0.2",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
+		"dompurify": "^3.3.3",
 		"framer-motion": "^12.23.3",
 		"gsap": "^3.13.0",
 		"lucide-react": "^0.525.0",
 		"next": "^15.5.9",
-		"next-auth": "^4.24.11",
 		"prettier": "^3.6.2",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0",
 		"react-icons": "^5.5.0",
 		"react-intersection-observer": "^9.16.0",
+		"sonner": "^2.0.7",
 		"tailwind-merge": "^3.3.1",
+		"tweetnacl": "^1.0.3",
+		"tweetnacl-util": "^0.15.1",
 		"uuid": "^11.1.0",
 		"zod": "^4.0.5"
 	},
 	"devDependencies": {
+		"@edge-runtime/vm": "^5.0.0",
 		"@eslint/eslintrc": "^3",
 		"@tailwindcss/postcss": "^4",
 		"@types/node": "^20",
@@ -39,8 +52,10 @@
 		"@types/react-dom": "^19",
 		"eslint": "^9",
 		"eslint-config-next": "15.3.5",
+		"happy-dom": "^20.8.9",
 		"tailwindcss": "^4",
 		"tw-animate-css": "^1.3.5",
-		"typescript": "^5"
+		"typescript": "^5",
+		"vitest": "^4.1.2"
 	}
 }
