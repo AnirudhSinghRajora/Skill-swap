@@ -5,8 +5,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Image from 'next/image';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { Check, Circle } from 'lucide-react';
+import api, { setTokens, notifyAuthChange, ApiClientError } from '@/lib/api';
+import { initializeE2EE } from '@/lib/e2ee/init';
 
 interface UserDataType {
   name: string;
@@ -20,31 +23,49 @@ export function SignupForm({ className, ...props }: React.ComponentProps<'div'>)
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  const API = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const passwordChecks = useMemo(() => [
+    { label: 'At least 8 characters', met: userData.password.length >= 8 },
+    { label: 'Contains a letter', met: /[a-zA-Z]/.test(userData.password) },
+    { label: 'Contains a number', met: /[0-9]/.test(userData.password) },
+    { label: 'Contains a special character', met: /[^a-zA-Z0-9]/.test(userData.password) },
+  ], [userData.password]);
+
+  const allChecksMet = passwordChecks.every((check) => check.met);
 
 const handleSignup = async (event: React.FormEvent<HTMLFormElement>) => {
   event.preventDefault();
   setError('');
+
+  const passwordError = !allChecksMet ? 'Please meet all password requirements' : null;
+  if (passwordError) {
+    setError(passwordError);
+    return;
+  }
+
   setLoading(true);
 
   try {
-    const res = await fetch(`${API}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(userData)
+    const data = await api.auth.register({
+      name: userData.name,
+      email: userData.email,
+      password: userData.password,
     });
 
-    const data = await res.json();
-
-    if (!res.ok) throw new Error(data?.message || 'Signup failed');
-
-    localStorage.setItem('access_token', data.access_token);
-    localStorage.setItem('refresh_token', data.refresh_token);
+    setTokens(data.access_token, data.refresh_token);
     localStorage.setItem('user', JSON.stringify(data.user));
+    notifyAuthChange();
 
-    router.push('/');
+    // Initialize E2EE keys (generate new pair + backup)
+    // Fire-and-forget: don't block navigation if E2EE init fails
+    initializeE2EE(userData.password).catch(() => {});
+
+    router.push('/profile');
   } catch (err: unknown) {
-    setError(err instanceof Error ? err.message : 'An error occurred');
+    if (err instanceof ApiClientError) {
+      setError(err.message);
+    } else {
+      setError('An error occurred');
+    }
   } finally {
     setLoading(false);
   }
@@ -85,6 +106,22 @@ const handleSignup = async (event: React.FormEvent<HTMLFormElement>) => {
                   onChange={(e) => setUserData({ ...userData, password: e.target.value })}
                   placeholder="Create a strong password"
                 />
+                {userData.password.length > 0 && (
+                  <ul className="mt-1 space-y-1.5">
+                    {passwordChecks.map((check) => (
+                      <li key={check.label} className="flex items-center gap-2 text-xs">
+                        {check.met ? (
+                          <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                        ) : (
+                          <Circle className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
+                        )}
+                        <span className={check.met ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}>
+                          {check.label}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               {error && <p className="text-red-500 text-sm">{error}</p>}

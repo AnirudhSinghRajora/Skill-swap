@@ -8,6 +8,8 @@ import { SiGoogle } from 'react-icons/si';
 import Image from 'next/image';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import api, { setTokens, notifyAuthChange, ApiClientError } from '@/lib/api';
+import { initializeE2EE } from '@/lib/e2ee/init';
 
 interface UserDataType {
   email: string;
@@ -20,31 +22,29 @@ export function LoginForm({ className, ...props }: React.ComponentProps<'div'>) 
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  const API = process.env.NEXT_PUBLIC_API_BASE_URL;
-
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      const res = await fetch(`${API}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData)
-      });
+      const data = await api.auth.login(userData.email, userData.password);
 
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data?.message || 'Login failed');
-
-      localStorage.setItem('access_token', data.access_token);
-      localStorage.setItem('refresh_token', data.refresh_token);
+      setTokens(data.access_token, data.refresh_token);
       localStorage.setItem('user', JSON.stringify(data.user));
+      notifyAuthChange();
 
-      router.push('/');
+      // Initialize E2EE keys (restore backup or generate new)
+      // Fire-and-forget: don't block navigation if E2EE init fails
+      initializeE2EE(userData.password).catch(() => {});
+
+      router.push('/dashboard');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      if (err instanceof ApiClientError) {
+        setError(err.message);
+      } else {
+        setError('An error occurred');
+      }
     } finally {
       setLoading(false);
     }
@@ -52,7 +52,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<'div'>) 
 
   const handleSocialLogin = (provider: string) => {
     if (provider === 'google') {
-      window.location.href = `${API}/auth/google`; // updated to use the API URL from .env
+      window.location.href = `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/google`;
     }
   };
 

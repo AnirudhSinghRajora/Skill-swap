@@ -1,10 +1,14 @@
+'use client';
+
 import { UserType } from '@/types/user';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
-import { Star, MapPin, MessageSquare, ArrowRight } from 'lucide-react';
+import { Star, MapPin, ArrowRightLeft, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import api, { getPhotoUrl } from '@/lib/api';
 
 interface UserCardProps {
 	user: UserType;
@@ -12,7 +16,12 @@ interface UserCardProps {
 }
 
 export function UserCard({ user, currentUserId }: UserCardProps) {
-	const isCurrentUser = currentUserId === user.userId;
+	const isCurrentUser = currentUserId === user.user_id;
+
+	const { data: ratingStats } = useQuery({
+		queryKey: ['userRatingStats', user.user_id],
+		queryFn: () => api.ratings.getStatsForUser(user.user_id),
+	});
 
 	return (
 		<Card className="hover:shadow-md transition-shadow duration-200">
@@ -20,7 +29,7 @@ export function UserCard({ user, currentUserId }: UserCardProps) {
 				<div className="flex items-start justify-between">
 					<div className="flex items-center space-x-3">
 						<Avatar
-							src={user.photoUrl || undefined}
+							src={user.has_photo ? getPhotoUrl(user.user_id) : undefined}
 							alt={user.name}
 							fallback={user.name
 								.split(' ')
@@ -40,12 +49,21 @@ export function UserCard({ user, currentUserId }: UserCardProps) {
 							</div>
 						</div>
 					</div>
-					<div className="flex items-center space-x-1">
+					<Link
+						href={`/profile/${user.user_id}?tab=reviews`}
+						className="flex items-center space-x-1 hover:opacity-80 transition-opacity"
+						title="View reviews"
+					>
 						<Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-						<span className="text-sm font-medium">
-							{user.rating ? user.rating.toFixed(1) : 'No rating'}
-						</span>
-					</div>
+						{ratingStats && ratingStats.total_ratings > 0 ? (
+							<>
+								<span className="text-sm font-medium">{ratingStats.average_rating.toFixed(1)}</span>
+								<span className="text-xs text-muted-foreground">({ratingStats.total_ratings})</span>
+							</>
+						) : (
+							<span className="text-sm font-medium text-muted-foreground">New</span>
+						)}
+					</Link>
 				</div>
 			</CardHeader>
 
@@ -56,10 +74,10 @@ export function UserCard({ user, currentUserId }: UserCardProps) {
 						Skills Offered
 					</h4>
 					<div className="flex flex-wrap gap-1">
-						{user.skillsOffered
+						{user.skills_offered
 							.filter((skill) => skill)
 							.map((skill) => (
-								<Badge key={skill.skillId} variant="secondary" className="text-xs">
+								<Badge key={skill.skill_id} variant="secondary" className="text-xs">
 									{skill.name}
 								</Badge>
 							))}
@@ -72,10 +90,10 @@ export function UserCard({ user, currentUserId }: UserCardProps) {
 						Skills Wanted
 					</h4>
 					<div className="flex flex-wrap gap-1">
-						{user.skillsWanted
+						{user.skills_wanted
 							.filter((skill) => skill)
 							.map((skill) => (
-								<Badge key={skill.skillId} variant="outline" className="text-xs">
+								<Badge key={skill.skill_id} variant="outline" className="text-xs">
 									{skill.name}
 								</Badge>
 							))}
@@ -86,11 +104,13 @@ export function UserCard({ user, currentUserId }: UserCardProps) {
 				<div className="flex space-x-2 pt-2">
 					{!isCurrentUser ? (
 						<>
-							<Button variant="outline" size="sm" className="flex-1">
-								<MessageSquare className="w-4 h-4 mr-2" />
-								Message
-							</Button>
-							<Link href={`/profile/${user.userId}`}>
+							<Link href={`/swaps?request=${user.user_id}`}>
+								<Button variant="outline" size="sm" className="flex-1">
+									<ArrowRightLeft className="w-4 h-4 mr-2" />
+									Request Swap
+								</Button>
+							</Link>
+							<Link href={`/profile/${user.user_id}`}>
 								<Button size="sm" className="flex-1">
 									<ArrowRight className="w-4 h-4 mr-2" />
 									View Profile

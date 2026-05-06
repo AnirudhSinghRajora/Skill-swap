@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { QueryClientProvider } from '@/providers/QueryClientProvider';
 import { Navigation } from '@/components/Navigation';
-import NextAuthSessionProvider from '@/components/AuthProvider';
 import './globals.css';
 import { SmoothScroll } from '@/components/smooth-scroll';
+import { Toaster } from 'sonner';
 
 const geistSans = Geist({
 	variable: '--font-geist-sans',
@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-	title: 'SkillShare - Exchange Skills with Others',
+	title: 'SkillSwap - Exchange Skills with Others',
 	description: 'Connect with people in your area to exchange skills and knowledge'
 };
 
@@ -32,12 +32,11 @@ export default function RootLayout({
 				className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background`}
 			>
 				<SmoothScroll />
-        <NextAuthSessionProvider>
-				  <QueryClientProvider>
-					  <Navigation />
-					  <main className="min-h-screen">{children}</main>
-				  </QueryClientProvider>
-				</NextAuthSessionProvider>
+				<QueryClientProvider>
+					<Navigation />
+					<main className="min-h-screen">{children}</main>
+					<Toaster richColors position="top-right" />
+				</QueryClientProvider>
 			</body>
 		</html>
 	);
