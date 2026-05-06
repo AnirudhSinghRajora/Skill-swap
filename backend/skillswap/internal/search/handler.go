@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/response"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -42,10 +43,30 @@ func NewHandler(searchService service.SearchService) *Handler {
 // @Router /api/v1/search/users [get]
 func (h *Handler) SearchUsers(c *gin.Context) {
 	filter := service.UserSearchFilter{
-		Query:     c.Query("q"),
-		Location:  c.Query("location"),
-		SortBy:    c.Query("sort_by"),
-		SortOrder: c.Query("sort_order"),
+		Query:    c.Query("q"),
+		Location: c.Query("location"),
+	}
+
+	// Validate sort_by
+	if sortBy := c.Query("sort_by"); sortBy != "" {
+		switch sortBy {
+		case "created_at", "name", "rating":
+			filter.SortBy = sortBy
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sort_by value. Allowed: created_at, name, rating"})
+			return
+		}
+	}
+
+	// Validate sort_order
+	if sortOrder := c.Query("sort_order"); sortOrder != "" {
+		switch sortOrder {
+		case "asc", "desc":
+			filter.SortOrder = sortOrder
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sort_order value. Allowed: asc, desc"})
+			return
+		}
 	}
 
 	// Parse skills offered
@@ -71,7 +92,14 @@ func (h *Handler) SearchUsers(c *gin.Context) {
 	// Parse min rating
 	if minRatingStr := c.Query("min_rating"); minRatingStr != "" {
 		if minRating, err := strconv.ParseFloat(minRatingStr, 64); err == nil {
+			if minRating < 0 || minRating > 5 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "min_rating must be between 0 and 5"})
+				return
+			}
 			filter.MinRating = &minRating
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid min_rating value"})
+			return
 		}
 	}
 
@@ -85,18 +113,26 @@ func (h *Handler) SearchUsers(c *gin.Context) {
 	// Parse pagination
 	if limitStr := c.Query("limit"); limitStr != "" {
 		if limit, err := strconv.Atoi(limitStr); err == nil {
+			if limit < 0 {
+				limit = 0
+			} else if limit > 100 {
+				limit = 100
+			}
 			filter.Limit = limit
 		}
 	}
 	if offsetStr := c.Query("offset"); offsetStr != "" {
 		if offset, err := strconv.Atoi(offsetStr); err == nil {
+			if offset < 0 {
+				offset = 0
+			}
 			filter.Offset = offset
 		}
 	}
 
 	users, total, err := h.searchService.SearchUsers(filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -132,14 +168,40 @@ func (h *Handler) SearchUsers(c *gin.Context) {
 // @Router /api/v1/search/swaps [get]
 func (h *Handler) SearchSwaps(c *gin.Context) {
 	filter := service.SwapSearchFilter{
-		Query:     c.Query("q"),
-		SortBy:    c.Query("sort_by"),
-		SortOrder: c.Query("sort_order"),
+		Query: c.Query("q"),
+	}
+
+	// Validate sort_by
+	if sortBy := c.Query("sort_by"); sortBy != "" {
+		switch sortBy {
+		case "created_at", "updated_at":
+			filter.SortBy = sortBy
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sort_by value. Allowed: created_at, updated_at"})
+			return
+		}
+	}
+
+	// Validate sort_order
+	if sortOrder := c.Query("sort_order"); sortOrder != "" {
+		switch sortOrder {
+		case "asc", "desc":
+			filter.SortOrder = sortOrder
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sort_order value. Allowed: asc, desc"})
+			return
+		}
 	}
 
 	// Parse status
 	if status := c.Query("status"); status != "" {
-		filter.Status = &status
+		switch status {
+		case "pending", "accepted", "rejected", "cancelled", "completed":
+			filter.Status = &status
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid status value. Allowed: pending, accepted, rejected, cancelled, completed"})
+			return
+		}
 	}
 
 	// Parse skill IDs
@@ -177,18 +239,26 @@ func (h *Handler) SearchSwaps(c *gin.Context) {
 	// Parse pagination
 	if limitStr := c.Query("limit"); limitStr != "" {
 		if limit, err := strconv.Atoi(limitStr); err == nil {
+			if limit < 0 {
+				limit = 0
+			} else if limit > 100 {
+				limit = 100
+			}
 			filter.Limit = limit
 		}
 	}
 	if offsetStr := c.Query("offset"); offsetStr != "" {
 		if offset, err := strconv.Atoi(offsetStr); err == nil {
+			if offset < 0 {
+				offset = 0
+			}
 			filter.Offset = offset
 		}
 	}
 
 	swaps, total, err := h.searchService.SearchSwaps(filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -218,27 +288,55 @@ func (h *Handler) SearchSwaps(c *gin.Context) {
 // @Router /api/v1/search/skills [get]
 func (h *Handler) SearchSkills(c *gin.Context) {
 	filter := service.SkillSearchFilter{
-		Query:     c.Query("q"),
-		Category:  c.Query("category"),
-		SortBy:    c.Query("sort_by"),
-		SortOrder: c.Query("sort_order"),
+		Query:    c.Query("q"),
+		Category: c.Query("category"),
+	}
+
+	// Validate sort_by
+	if sortBy := c.Query("sort_by"); sortBy != "" {
+		switch sortBy {
+		case "name", "created_at", "popularity":
+			filter.SortBy = sortBy
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sort_by value. Allowed: name, created_at, popularity"})
+			return
+		}
+	}
+
+	// Validate sort_order
+	if sortOrder := c.Query("sort_order"); sortOrder != "" {
+		switch sortOrder {
+		case "asc", "desc":
+			filter.SortOrder = sortOrder
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sort_order value. Allowed: asc, desc"})
+			return
+		}
 	}
 
 	// Parse pagination
 	if limitStr := c.Query("limit"); limitStr != "" {
 		if limit, err := strconv.Atoi(limitStr); err == nil {
+			if limit < 0 {
+				limit = 0
+			} else if limit > 100 {
+				limit = 100
+			}
 			filter.Limit = limit
 		}
 	}
 	if offsetStr := c.Query("offset"); offsetStr != "" {
 		if offset, err := strconv.Atoi(offsetStr); err == nil {
+			if offset < 0 {
+				offset = 0
+			}
 			filter.Offset = offset
 		}
 	}
 
 	skills, total, err := h.searchService.SearchSkills(filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -273,9 +371,21 @@ func (h *Handler) GlobalSearch(c *gin.Context) {
 	// Parse entity types
 	entityTypes := []string{"users", "skills", "swaps"} // Default: search all
 	if typesStr := c.Query("types"); typesStr != "" {
-		entityTypes = strings.Split(typesStr, ",")
-		for i, t := range entityTypes {
-			entityTypes[i] = strings.TrimSpace(t)
+		rawTypes := strings.Split(typesStr, ",")
+		entityTypes = nil
+		for _, t := range rawTypes {
+			t = strings.TrimSpace(t)
+			switch t {
+			case "users", "skills", "swaps":
+				entityTypes = append(entityTypes, t)
+			default:
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid entity type: " + t + ". Allowed: users, skills, swaps"})
+				return
+			}
+		}
+		if len(entityTypes) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "At least one valid entity type is required"})
+			return
 		}
 	}
 
@@ -283,13 +393,18 @@ func (h *Handler) GlobalSearch(c *gin.Context) {
 	limit := 5 // Default limit per entity type
 	if limitStr := c.Query("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil {
+			if l < 0 {
+				l = 0
+			} else if l > 50 {
+				l = 50
+			}
 			limit = l
 		}
 	}
 
 	results, err := h.searchService.GlobalSearch(query, entityTypes, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -330,7 +445,7 @@ func (h *Handler) SearchSuggestions(c *gin.Context) {
 			Limit: 10,
 		})
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			response.InternalError(c, err)
 			return
 		}
 		for _, skill := range results {
@@ -346,7 +461,7 @@ func (h *Handler) SearchSuggestions(c *gin.Context) {
 			Limit:    10,
 		})
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			response.InternalError(c, err)
 			return
 		}
 		for _, user := range results {

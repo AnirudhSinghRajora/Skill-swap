@@ -1,11 +1,14 @@
 package notification
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/response"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -67,7 +70,7 @@ func (h *Handler) GetUserNotifications(c *gin.Context) {
 
 	notifications, total, err := h.notificationService.GetUserNotifications(uid, page, limit, unreadOnly)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get notifications"})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -133,7 +136,7 @@ func (h *Handler) MarkNotificationsAsRead(c *gin.Context) {
 	}
 
 	if err := h.notificationService.MarkNotificationsAsRead(uid, req.NotificationIDs); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -165,7 +168,7 @@ func (h *Handler) MarkAllAsRead(c *gin.Context) {
 	}
 
 	if err := h.notificationService.MarkAllAsRead(uid); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to mark all notifications as read"})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -206,11 +209,11 @@ func (h *Handler) DeleteNotification(c *gin.Context) {
 	}
 
 	if err := h.notificationService.DeleteNotification(uid, notificationID); err != nil {
-		if err.Error() == "notification not found" {
+		if errors.Is(err, apperrors.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Notification not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete notification"})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -243,7 +246,7 @@ func (h *Handler) GetNotificationStats(c *gin.Context) {
 
 	stats, err := h.notificationService.GetNotificationStats(uid)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get notification stats"})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -267,20 +270,33 @@ func (h *Handler) GetNotificationStats(c *gin.Context) {
 func (h *Handler) CreateNotification(c *gin.Context) {
 	// Check if user is admin
 	isAdmin, exists := c.Get("is_admin")
-	if !exists || !isAdmin.(bool) {
+	isAdminBool, ok := isAdmin.(bool)
+	if !exists || !ok || !isAdminBool {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 		return
 	}
 
 	var req models.NotificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	// Validate notification type
+	switch req.Type {
+	case models.NotificationTypeSwapRequest, models.NotificationTypeSwapAccepted,
+		models.NotificationTypeSwapRejected, models.NotificationTypeSwapCompleted,
+		models.NotificationTypeNewRating, models.NotificationTypeSkillMatched,
+		models.NotificationTypeSystemAlert, models.NotificationTypeAdminNotice:
+		// valid
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid notification type"})
 		return
 	}
 
 	notification, err := h.notificationService.CreateNotification(&req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create notification"})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -332,11 +348,11 @@ func (h *Handler) GetNotificationByID(c *gin.Context) {
 
 	notification, err := h.notificationService.GetNotificationByID(uid, notificationID)
 	if err != nil {
-		if err.Error() == "notification not found" {
+		if errors.Is(err, apperrors.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Notification not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get notification"})
+		response.InternalError(c, err)
 		return
 	}
 

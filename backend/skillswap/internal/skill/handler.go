@@ -1,18 +1,21 @@
 package skill
 
 import (
+	"errors"
 	"net/http"
 
-	appservice "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
+	resp "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/response"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type Handler struct {
-	skillService appservice.SkillService
+	skillService service.SkillService
 }
 
-func NewHandler(skillService appservice.SkillService) *Handler {
+func NewHandler(skillService service.SkillService) *Handler {
 	return &Handler{
 		skillService: skillService,
 	}
@@ -53,7 +56,7 @@ type UserSkillRequest struct {
 func (h *Handler) GetAllSkills(c *gin.Context) {
 	skills, err := h.skillService.GetAllSkills()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch skills"})
+		resp.InternalError(c, err)
 		return
 	}
 
@@ -90,11 +93,11 @@ func (h *Handler) GetSkill(c *gin.Context) {
 
 	skill, err := h.skillService.GetSkillByID(skillID)
 	if err != nil {
-		if err.Error() == "skill not found" {
+		if errors.Is(err, apperrors.ErrNotFound) {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Skill not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch skill"})
+		resp.InternalError(c, err)
 		return
 	}
 
@@ -129,7 +132,11 @@ func (h *Handler) CreateSkill(c *gin.Context) {
 
 	skill, err := h.skillService.CreateSkill(req.Name)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create skill"})
+		if errors.Is(err, apperrors.ErrValidation) {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+			return
+		}
+		resp.InternalError(c, err)
 		return
 	}
 
@@ -173,11 +180,11 @@ func (h *Handler) UpdateSkill(c *gin.Context) {
 
 	skill, err := h.skillService.UpdateSkill(skillID, req.Name)
 	if err != nil {
-		if err.Error() == "skill not found" {
+		if errors.Is(err, apperrors.ErrNotFound) {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Skill not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update skill"})
+		resp.InternalError(c, err)
 		return
 	}
 
@@ -214,15 +221,14 @@ func (h *Handler) DeleteSkill(c *gin.Context) {
 
 	err = h.skillService.DeleteSkill(skillID)
 	if err != nil {
-		if err.Error() == "skill not found" {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Skill not found"})
-			return
-		}
-		if err.Error() == "skill is in use and cannot be deleted" {
+		case errors.Is(err, apperrors.ErrInUse):
 			c.JSON(http.StatusConflict, ErrorResponse{Error: "Skill is in use and cannot be deleted"})
-			return
+		default:
+			resp.InternalError(c, err)
 		}
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to delete skill"})
 		return
 	}
 
@@ -268,15 +274,14 @@ func (h *Handler) AddOfferedSkill(c *gin.Context) {
 
 	err = h.skillService.AddOfferedSkill(userID, skillID)
 	if err != nil {
-		if err.Error() == "skill not found" {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Skill not found"})
-			return
-		}
-		if err.Error() == "skill already in offered skills" {
+		case errors.Is(err, apperrors.ErrConflict):
 			c.JSON(http.StatusConflict, ErrorResponse{Error: "Skill already in offered skills"})
-			return
+		default:
+			resp.InternalError(c, err)
 		}
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to add offered skill"})
 		return
 	}
 
@@ -318,11 +323,11 @@ func (h *Handler) RemoveOfferedSkill(c *gin.Context) {
 
 	err = h.skillService.RemoveOfferedSkill(userID, skillID)
 	if err != nil {
-		if err.Error() == "offered skill not found" {
+		if errors.Is(err, apperrors.ErrNotFound) {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Offered skill not found"})
-			return
+		} else {
+			resp.InternalError(c, err)
 		}
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to remove offered skill"})
 		return
 	}
 
@@ -368,15 +373,14 @@ func (h *Handler) AddWantedSkill(c *gin.Context) {
 
 	err = h.skillService.AddWantedSkill(userID, skillID)
 	if err != nil {
-		if err.Error() == "skill not found" {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Skill not found"})
-			return
-		}
-		if err.Error() == "skill already in wanted skills" {
+		case errors.Is(err, apperrors.ErrConflict):
 			c.JSON(http.StatusConflict, ErrorResponse{Error: "Skill already in wanted skills"})
-			return
+		default:
+			resp.InternalError(c, err)
 		}
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to add wanted skill"})
 		return
 	}
 
@@ -418,11 +422,11 @@ func (h *Handler) RemoveWantedSkill(c *gin.Context) {
 
 	err = h.skillService.RemoveWantedSkill(userID, skillID)
 	if err != nil {
-		if err.Error() == "wanted skill not found" {
+		if errors.Is(err, apperrors.ErrNotFound) {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Wanted skill not found"})
-			return
+		} else {
+			resp.InternalError(c, err)
 		}
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to remove wanted skill"})
 		return
 	}
 
@@ -454,7 +458,7 @@ func (h *Handler) GetUserOfferedSkills(c *gin.Context) {
 
 	skills, err := h.skillService.GetUserOfferedSkills(userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch offered skills"})
+		resp.InternalError(c, err)
 		return
 	}
 
@@ -495,7 +499,7 @@ func (h *Handler) GetUserWantedSkills(c *gin.Context) {
 
 	skills, err := h.skillService.GetUserWantedSkills(userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch wanted skills"})
+		resp.InternalError(c, err)
 		return
 	}
 

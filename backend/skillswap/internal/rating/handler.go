@@ -1,13 +1,71 @@
 package rating
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
+	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/response"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+// Response DTOs with proper JSON tags
+type RatingResponse struct {
+	RatingID  string        `json:"rating_id"`
+	SwapID    string        `json:"swap_id"`
+	RaterID   string        `json:"rater_id"`
+	RateeID   string        `json:"ratee_id"`
+	Score     int16         `json:"score"`
+	Comment   *string       `json:"comment"`
+	CreatedAt string        `json:"created_at"`
+	Rater     *UserResponse `json:"rater,omitempty"`
+	Ratee     *UserResponse `json:"ratee,omitempty"`
+}
+
+type UserResponse struct {
+	UserID   string `json:"user_id"`
+	Name     string `json:"name"`
+	HasPhoto bool   `json:"has_photo"`
+}
+
+func convertRating(r *models.SwapRating) RatingResponse {
+	resp := RatingResponse{
+		RatingID:  r.RatingID.String(),
+		SwapID:    r.SwapID.String(),
+		RaterID:   r.RaterID.String(),
+		RateeID:   r.RateeID.String(),
+		Score:     r.Score,
+		Comment:   r.Comment,
+		CreatedAt: r.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	}
+	if r.Rater.UserID != uuid.Nil {
+		resp.Rater = &UserResponse{
+			UserID:   r.Rater.UserID.String(),
+			Name:     r.Rater.Name,
+			HasPhoto: len(r.Rater.PhotoData) > 0,
+		}
+	}
+	if r.Ratee.UserID != uuid.Nil {
+		resp.Ratee = &UserResponse{
+			UserID:   r.Ratee.UserID.String(),
+			Name:     r.Ratee.Name,
+			HasPhoto: len(r.Ratee.PhotoData) > 0,
+		}
+	}
+	return resp
+}
+
+func convertRatings(ratings []models.SwapRating) []RatingResponse {
+	result := make([]RatingResponse, len(ratings))
+	for i := range ratings {
+		result[i] = convertRating(&ratings[i])
+	}
+	return result
+}
 
 type Handler struct {
 	ratingService service.RatingService
@@ -46,12 +104,17 @@ func (h *Handler) CreateRating(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-	req.RaterID = raterID.(uuid.UUID)
+	uid, err := uuid.Parse(raterID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+	req.RaterID = uid
 
 	// Check if user can rate this swap
 	canRate, err := h.ratingService.CanUserRateSwap(req.SwapID, req.RaterID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify rating permissions"})
+		response.InternalError(c, err)
 		return
 	}
 	if !canRate {
@@ -62,7 +125,7 @@ func (h *Handler) CreateRating(c *gin.Context) {
 	// Check if user has already rated this swap
 	hasRated, err := h.ratingService.HasUserRatedSwap(req.SwapID, req.RaterID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check existing ratings"})
+		response.InternalError(c, err)
 		return
 	}
 	if hasRated {
@@ -72,11 +135,11 @@ func (h *Handler) CreateRating(c *gin.Context) {
 
 	rating, err := h.ratingService.CreateRating(&req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, rating)
+	c.JSON(http.StatusCreated, convertRating(rating))
 }
 
 // GetRating retrieves a rating by ID
@@ -105,7 +168,7 @@ func (h *Handler) GetRating(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, rating)
+	c.JSON(http.StatusOK, convertRating(rating))
 }
 
 // UpdateRating updates an existing rating
@@ -143,22 +206,26 @@ func (h *Handler) UpdateRating(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-
-	rating, err := h.ratingService.UpdateRating(ratingID, userID.(uuid.UUID), &req)
+	uid, err := uuid.Parse(userID.(string))
 	if err != nil {
-		if err.Error() == "rating not found" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Rating not found"})
-			return
-		}
-		if err.Error() == "unauthorized" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "You can only update your own ratings"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
 
-	c.JSON(http.StatusOK, rating)
+	rating, err := h.ratingService.UpdateRating(ratingID, uid, &req)
+	if err != nil {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "Rating not found"})
+		case errors.Is(err, apperrors.ErrForbidden):
+			c.JSON(http.StatusForbidden, gin.H{"error": "You can only update your own ratings"})
+		default:
+			response.InternalError(c, err)
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, convertRating(rating))
 }
 
 // DeleteRating deletes a rating
@@ -189,18 +256,22 @@ func (h *Handler) DeleteRating(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-
-	err = h.ratingService.DeleteRating(ratingID, userID.(uuid.UUID))
+	uid, err := uuid.Parse(userID.(string))
 	if err != nil {
-		if err.Error() == "rating not found" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	err = h.ratingService.DeleteRating(ratingID, uid)
+	if err != nil {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "Rating not found"})
-			return
-		}
-		if err.Error() == "unauthorized" {
+		case errors.Is(err, apperrors.ErrForbidden):
 			c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own ratings"})
-			return
+		default:
+			response.InternalError(c, err)
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -228,11 +299,11 @@ func (h *Handler) GetSwapRatings(c *gin.Context) {
 
 	ratings, err := h.ratingService.GetSwapRatings(swapID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ratings": ratings})
+	c.JSON(http.StatusOK, gin.H{"ratings": convertRatings(ratings)})
 }
 
 // GetUserRatings retrieves ratings for a user with filters
@@ -251,9 +322,9 @@ func (h *Handler) GetSwapRatings(c *gin.Context) {
 // @Success 200 {array} models.SwapRating
 // @Failure 400 {object} gin.H
 // @Failure 500 {object} gin.H
-// @Router /api/v1/users/{user_id}/ratings [get]
+// @Router /api/v1/users/{id}/ratings [get]
 func (h *Handler) GetUserRatings(c *gin.Context) {
-	userIDStr := c.Param("user_id")
+	userIDStr := c.Param("id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
@@ -277,18 +348,33 @@ func (h *Handler) GetUserRatings(c *gin.Context) {
 
 	if minScore := c.Query("min_score"); minScore != "" {
 		if val, err := strconv.Atoi(minScore); err == nil {
+			if val < 1 {
+				val = 1
+			} else if val > 5 {
+				val = 5
+			}
 			filter.MinScore = &val
 		}
 	}
 
 	if maxScore := c.Query("max_score"); maxScore != "" {
 		if val, err := strconv.Atoi(maxScore); err == nil {
+			if val < 1 {
+				val = 1
+			} else if val > 5 {
+				val = 5
+			}
 			filter.MaxScore = &val
 		}
 	}
 
 	if limit := c.Query("limit"); limit != "" {
 		if val, err := strconv.Atoi(limit); err == nil {
+			if val < 0 {
+				val = 0
+			} else if val > 100 {
+				val = 100
+			}
 			filter.Limit = val
 		}
 	} else {
@@ -297,6 +383,9 @@ func (h *Handler) GetUserRatings(c *gin.Context) {
 
 	if offset := c.Query("offset"); offset != "" {
 		if val, err := strconv.Atoi(offset); err == nil {
+			if val < 0 {
+				val = 0
+			}
 			filter.Offset = val
 		}
 	}
@@ -309,11 +398,11 @@ func (h *Handler) GetUserRatings(c *gin.Context) {
 
 	ratings, err := h.ratingService.GetUserRatings(userID, filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ratings": ratings})
+	c.JSON(http.StatusOK, gin.H{"ratings": convertRatings(ratings)})
 }
 
 // GetUserRatingStats retrieves rating statistics for a user
@@ -326,9 +415,9 @@ func (h *Handler) GetUserRatings(c *gin.Context) {
 // @Success 200 {object} service.UserRatingStats
 // @Failure 400 {object} gin.H
 // @Failure 500 {object} gin.H
-// @Router /api/v1/users/{user_id}/ratings/stats [get]
+// @Router /api/v1/users/{id}/ratings/stats [get]
 func (h *Handler) GetUserRatingStats(c *gin.Context) {
-	userIDStr := c.Param("user_id")
+	userIDStr := c.Param("id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
@@ -337,7 +426,7 @@ func (h *Handler) GetUserRatingStats(c *gin.Context) {
 
 	stats, err := h.ratingService.GetUserRatingStats(userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 

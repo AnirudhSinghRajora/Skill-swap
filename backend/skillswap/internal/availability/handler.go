@@ -1,11 +1,14 @@
 package availability
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/response"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -45,11 +48,20 @@ func (h *Handler) CreateAvailabilitySlot(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-	req.UserID = userID.(uuid.UUID)
+	uid, err := uuid.Parse(userID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+	req.UserID = uid
 
 	slot, err := h.availabilityService.CreateAvailabilitySlot(&req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		if errors.Is(err, apperrors.ErrValidation) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		} else {
+			response.InternalError(c, err)
+		}
 		return
 	}
 
@@ -73,10 +85,15 @@ func (h *Handler) GetUserAvailabilitySlots(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-
-	slots, err := h.availabilityService.GetUserAvailabilitySlots(userID.(uuid.UUID))
+	uid, err := uuid.Parse(userID.(string))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	slots, err := h.availabilityService.GetUserAvailabilitySlots(uid)
+	if err != nil {
+		response.InternalError(c, err)
 		return
 	}
 
@@ -110,14 +127,19 @@ func (h *Handler) GetAvailabilitySlot(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-
-	slot, err := h.availabilityService.GetAvailabilitySlot(slotID, userID.(uuid.UUID))
+	uid, err := uuid.Parse(userID.(string))
 	if err != nil {
-		if err.Error() == "availability slot not found" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	slot, err := h.availabilityService.GetAvailabilitySlot(slotID, uid)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Availability slot not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -158,14 +180,22 @@ func (h *Handler) UpdateAvailabilitySlot(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-
-	slot, err := h.availabilityService.UpdateAvailabilitySlot(slotID, userID.(uuid.UUID), &req)
+	uid, err := uuid.Parse(userID.(string))
 	if err != nil {
-		if err.Error() == "availability slot not found" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	slot, err := h.availabilityService.UpdateAvailabilitySlot(slotID, uid, &req)
+	if err != nil {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "Availability slot not found"})
-			return
+		case errors.Is(err, apperrors.ErrValidation):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		default:
+			response.InternalError(c, err)
 		}
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -199,14 +229,19 @@ func (h *Handler) DeleteAvailabilitySlot(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-
-	err = h.availabilityService.DeleteAvailabilitySlot(slotID, userID.(uuid.UUID))
+	uid, err := uuid.Parse(userID.(string))
 	if err != nil {
-		if err.Error() == "availability slot not found" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	err = h.availabilityService.DeleteAvailabilitySlot(slotID, uid)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Availability slot not found"})
-			return
+		} else {
+			response.InternalError(c, err)
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -240,9 +275,15 @@ func (h *Handler) FindCommonAvailability(c *gin.Context) {
 		return
 	}
 
-	commonSlots, err := h.availabilityService.FindCommonAvailability(userID.(uuid.UUID), otherUserID)
+	uid, err := uuid.Parse(userID.(string))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	commonSlots, err := h.availabilityService.FindCommonAvailability(uid, otherUserID)
+	if err != nil {
+		response.InternalError(c, err)
 		return
 	}
 
@@ -292,6 +333,11 @@ func (h *Handler) GetAvailabilityByDayAndTime(c *gin.Context) {
 		return
 	}
 
+	if !endTime.After(startTime) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "end_time must be after start_time"})
+		return
+	}
+
 	// Get user ID from JWT token
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -299,9 +345,15 @@ func (h *Handler) GetAvailabilityByDayAndTime(c *gin.Context) {
 		return
 	}
 
-	slots, err := h.availabilityService.GetAvailabilityByDayAndTime(userID.(uuid.UUID), day, startTime, endTime)
+	uid, err := uuid.Parse(userID.(string))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	slots, err := h.availabilityService.GetAvailabilityByDayAndTime(uid, day, startTime, endTime)
+	if err != nil {
+		response.InternalError(c, err)
 		return
 	}
 

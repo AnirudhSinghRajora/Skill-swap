@@ -1,11 +1,14 @@
 package swap
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	appservice "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
+	resp "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/response"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -32,18 +35,20 @@ type UpdateSwapStatusRequest struct {
 }
 
 type SwapRequestResponse struct {
-	SwapID         string         `json:"swap_id"`
-	RequesterID    string         `json:"requester_id"`
-	ResponderID    string         `json:"responder_id"`
-	OfferedSkillID string         `json:"offered_skill_id"`
-	WantedSkillID  string         `json:"wanted_skill_id"`
-	Status         string         `json:"status"`
-	CreatedAt      string         `json:"created_at"`
-	UpdatedAt      string         `json:"updated_at"`
-	Requester      *UserResponse  `json:"requester,omitempty"`
-	Responder      *UserResponse  `json:"responder,omitempty"`
-	OfferedSkill   *SkillResponse `json:"offered_skill,omitempty"`
-	WantedSkill    *SkillResponse `json:"wanted_skill,omitempty"`
+	SwapID             string         `json:"swap_id"`
+	RequesterID        string         `json:"requester_id"`
+	ResponderID        string         `json:"responder_id"`
+	OfferedSkillID     string         `json:"offered_skill_id"`
+	WantedSkillID      string         `json:"wanted_skill_id"`
+	Status             string         `json:"status"`
+	RequesterCompleted bool           `json:"requester_completed"`
+	ResponderCompleted bool           `json:"responder_completed"`
+	CreatedAt          string         `json:"created_at"`
+	UpdatedAt          string         `json:"updated_at"`
+	Requester          *UserResponse  `json:"requester,omitempty"`
+	Responder          *UserResponse  `json:"responder,omitempty"`
+	OfferedSkill       *SkillResponse `json:"offered_skill,omitempty"`
+	WantedSkill        *SkillResponse `json:"wanted_skill,omitempty"`
 }
 
 type UserResponse struct {
@@ -51,7 +56,7 @@ type UserResponse struct {
 	Name     string `json:"name"`
 	Email    string `json:"email,omitempty"`
 	Location string `json:"location,omitempty"`
-	PhotoURL string `json:"photo_url,omitempty"`
+	HasPhoto bool   `json:"has_photo"`
 }
 
 type SkillResponse struct {
@@ -78,14 +83,16 @@ type ErrorResponse struct {
 // Helper function to convert models to responses
 func (h *Handler) convertToSwapResponse(swap *models.SwapRequest, includeDetails bool) SwapRequestResponse {
 	response := SwapRequestResponse{
-		SwapID:         swap.SwapID.String(),
-		RequesterID:    swap.RequesterID.String(),
-		ResponderID:    swap.ResponderID.String(),
-		OfferedSkillID: swap.OfferedSkillID.String(),
-		WantedSkillID:  swap.WantedSkillID.String(),
-		Status:         string(swap.Status),
-		CreatedAt:      swap.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		UpdatedAt:      swap.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		SwapID:             swap.SwapID.String(),
+		RequesterID:        swap.RequesterID.String(),
+		ResponderID:        swap.ResponderID.String(),
+		OfferedSkillID:     swap.OfferedSkillID.String(),
+		WantedSkillID:      swap.WantedSkillID.String(),
+		Status:             string(swap.Status),
+		RequesterCompleted: swap.RequesterCompleted,
+		ResponderCompleted: swap.ResponderCompleted,
+		CreatedAt:          swap.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		UpdatedAt:          swap.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
 
 	if includeDetails {
@@ -94,7 +101,7 @@ func (h *Handler) convertToSwapResponse(swap *models.SwapRequest, includeDetails
 				UserID:   swap.Requester.UserID.String(),
 				Name:     swap.Requester.Name,
 				Location: h.getStringValue(swap.Requester.Location),
-				PhotoURL: h.getStringValue(swap.Requester.PhotoURL),
+				HasPhoto: len(swap.Requester.PhotoData) > 0,
 			}
 		}
 
@@ -103,7 +110,7 @@ func (h *Handler) convertToSwapResponse(swap *models.SwapRequest, includeDetails
 				UserID:   swap.Responder.UserID.String(),
 				Name:     swap.Responder.Name,
 				Location: h.getStringValue(swap.Responder.Location),
-				PhotoURL: h.getStringValue(swap.Responder.PhotoURL),
+				HasPhoto: len(swap.Responder.PhotoData) > 0,
 			}
 		}
 
@@ -192,7 +199,14 @@ func (h *Handler) CreateSwapRequest(c *gin.Context) {
 
 	swap, err := h.swapService.CreateSwapRequest(swapDTO)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		switch {
+		case errors.Is(err, apperrors.ErrSelfAction), errors.Is(err, apperrors.ErrValidation):
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		case errors.Is(err, apperrors.ErrDuplicate):
+			c.JSON(http.StatusConflict, ErrorResponse{Error: err.Error()})
+		default:
+			resp.InternalError(c, err)
+		}
 		return
 	}
 
@@ -236,11 +250,11 @@ func (h *Handler) GetSwapRequest(c *gin.Context) {
 
 	swap, err := h.swapService.GetSwapRequestByID(swapID)
 	if err != nil {
-		if err.Error() == "swap request not found" {
+		if errors.Is(err, apperrors.ErrNotFound) {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Swap request not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch swap request"})
+		resp.InternalError(c, err)
 		return
 	}
 
@@ -287,7 +301,13 @@ func (h *Handler) GetUserSwapRequests(c *gin.Context) {
 
 	if statusStr := c.Query("status"); statusStr != "" {
 		status := models.SwapStatus(statusStr)
-		filter.Status = &status
+		switch status {
+		case models.StatusPending, models.StatusAccepted, models.StatusRejected, models.StatusCancelled:
+			filter.Status = &status
+		default:
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid status. Must be one of: pending, accepted, rejected, cancelled"})
+			return
+		}
 	}
 
 	if sentStr := c.Query("sent"); sentStr != "" {
@@ -300,12 +320,20 @@ func (h *Handler) GetUserSwapRequests(c *gin.Context) {
 
 	if limitStr := c.Query("limit"); limitStr != "" {
 		if limit, err := strconv.Atoi(limitStr); err == nil {
+			if limit < 0 {
+				limit = 0
+			} else if limit > 100 {
+				limit = 100
+			}
 			filter.Limit = limit
 		}
 	}
 
 	if offsetStr := c.Query("offset"); offsetStr != "" {
 		if offset, err := strconv.Atoi(offsetStr); err == nil {
+			if offset < 0 {
+				offset = 0
+			}
 			filter.Offset = offset
 		}
 	}
@@ -314,7 +342,7 @@ func (h *Handler) GetUserSwapRequests(c *gin.Context) {
 	if !filter.Sent && !filter.Received {
 		swapRequests, err := h.swapService.GetSwapRequestsForUser(userID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch swap requests"})
+			resp.InternalError(c, err)
 			return
 		}
 
@@ -338,7 +366,7 @@ func (h *Handler) GetUserSwapRequests(c *gin.Context) {
 	// Get filtered requests
 	swaps, err := h.swapService.GetUserSwapRequests(userID, filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch swap requests"})
+		resp.InternalError(c, err)
 		return
 	}
 
@@ -394,16 +422,16 @@ func (h *Handler) UpdateSwapStatus(c *gin.Context) {
 	status := models.SwapStatus(req.Status)
 	swap, err := h.swapService.UpdateSwapStatus(swapID, userID, status)
 	if err != nil {
-		if err.Error() == "swap request not found" {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Swap request not found"})
-			return
-		}
-		if err.Error() == "only responder can accept or reject requests" ||
-			err.Error() == "only requester or responder can cancel requests" {
+		case errors.Is(err, apperrors.ErrForbidden):
 			c.JSON(http.StatusForbidden, ErrorResponse{Error: err.Error()})
-			return
+		case errors.Is(err, apperrors.ErrWrongStatus):
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		default:
+			resp.InternalError(c, err)
 		}
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -447,15 +475,16 @@ func (h *Handler) DeleteSwapRequest(c *gin.Context) {
 
 	err = h.swapService.DeleteSwapRequest(swapID, userID)
 	if err != nil {
-		if err.Error() == "swap request not found" {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Swap request not found"})
-			return
-		}
-		if err.Error() == "only requester can delete swap requests" {
+		case errors.Is(err, apperrors.ErrForbidden):
 			c.JSON(http.StatusForbidden, ErrorResponse{Error: err.Error()})
-			return
+		case errors.Is(err, apperrors.ErrWrongStatus):
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		default:
+			resp.InternalError(c, err)
 		}
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -487,7 +516,7 @@ func (h *Handler) GetPotentialMatches(c *gin.Context) {
 
 	matches, err := h.swapService.FindPotentialMatches(userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to find matches"})
+		resp.InternalError(c, err)
 		return
 	}
 
@@ -498,7 +527,7 @@ func (h *Handler) GetPotentialMatches(c *gin.Context) {
 				UserID:   match.User.UserID.String(),
 				Name:     match.User.Name,
 				Location: h.getStringValue(match.User.Location),
-				PhotoURL: h.getStringValue(match.User.PhotoURL),
+				HasPhoto: len(match.User.PhotoData) > 0,
 			},
 			OfferedSkill: SkillResponse{
 				SkillID: match.OfferedSkill.SkillID.String(),
