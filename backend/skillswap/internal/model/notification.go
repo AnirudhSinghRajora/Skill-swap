@@ -47,10 +47,10 @@ func (Notification) TableName() string { return "notifications" }
 
 // NotificationRequest represents a request to create a notification
 type NotificationRequest struct {
-	UserID    uuid.UUID        `json:"user_id" validate:"required"`
-	Type      NotificationType `json:"type" validate:"required"`
-	Title     string           `json:"title" validate:"required,min=1,max=255"`
-	Message   string           `json:"message" validate:"required,min=1,max=1000"`
+	UserID    uuid.UUID        `json:"user_id" binding:"required"`
+	Type      NotificationType `json:"type" binding:"required"`
+	Title     string           `json:"title" binding:"required,min=1,max=255"`
+	Message   string           `json:"message" binding:"required,min=1,max=1000"`
 	RelatedID *uuid.UUID       `json:"related_id,omitempty"`
 }
 
@@ -67,7 +67,7 @@ type NotificationResponse struct {
 
 // MarkAsReadRequest represents a request to mark notifications as read
 type MarkAsReadRequest struct {
-	NotificationIDs []uuid.UUID `json:"notification_ids" validate:"required"`
+	NotificationIDs []uuid.UUID `json:"notification_ids" binding:"required"`
 }
 
 // NotificationStatsResponse represents notification statistics
