@@ -1,10 +1,13 @@
 package admin
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/response"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -38,11 +41,31 @@ func NewHandler(adminService service.AdminService) *Handler {
 // @Failure 500 {object} gin.H
 // @Router /api/v1/admin/users [get]
 func (h *Handler) GetAllUsers(c *gin.Context) {
-	// Parse query parameters
+	// Parse and validate query parameters
+	sortBy := c.Query("sort_by")
+	if sortBy != "" {
+		switch sortBy {
+		case "created_at", "name", "email":
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sort_by field. Allowed: created_at, name, email"})
+			return
+		}
+	}
+
+	sortOrder := c.Query("sort_order")
+	if sortOrder != "" {
+		switch sortOrder {
+		case "asc", "desc":
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sort_order. Allowed: asc, desc"})
+			return
+		}
+	}
+
 	filter := service.AdminUserFilter{
 		Search:    c.Query("search"),
-		SortBy:    c.Query("sort_by"),
-		SortOrder: c.Query("sort_order"),
+		SortBy:    sortBy,
+		SortOrder: sortOrder,
 	}
 
 	if isBanned := c.Query("is_banned"); isBanned != "" {
@@ -59,19 +82,27 @@ func (h *Handler) GetAllUsers(c *gin.Context) {
 
 	if limit := c.Query("limit"); limit != "" {
 		if val, err := strconv.Atoi(limit); err == nil {
+			if val < 0 {
+				val = 0
+			} else if val > 100 {
+				val = 100
+			}
 			filter.Limit = val
 		}
 	}
 
 	if offset := c.Query("offset"); offset != "" {
 		if val, err := strconv.Atoi(offset); err == nil {
+			if val < 0 {
+				val = 0
+			}
 			filter.Offset = val
 		}
 	}
 
 	users, total, err := h.adminService.GetAllUsers(filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -106,23 +137,27 @@ func (h *Handler) BanUser(c *gin.Context) {
 	}
 
 	// Get admin ID from JWT token
-	adminID, exists := c.Get("user_id")
+	adminIDVal, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-
-	err = h.adminService.BanUser(adminID.(uuid.UUID), userID)
+	adminID, err := uuid.Parse(adminIDVal.(string))
 	if err != nil {
-		if err.Error() == "user not found" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-			return
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid admin user ID"})
+		return
+	}
+
+	err = h.adminService.BanUser(adminID, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case errors.Is(err, apperrors.ErrForbidden):
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		default:
+			response.InternalError(c, err)
 		}
-		if err.Error() == "cannot ban an admin user" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot ban an admin user"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -150,15 +185,25 @@ func (h *Handler) UnbanUser(c *gin.Context) {
 		return
 	}
 
-	adminID, exists := c.Get("user_id")
+	adminIDVal, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-
-	err = h.adminService.UnbanUser(adminID.(uuid.UUID), userID)
+	adminID, err := uuid.Parse(adminIDVal.(string))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid admin user ID"})
+		return
+	}
+
+	err = h.adminService.UnbanUser(adminID, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		default:
+			response.InternalError(c, err)
+		}
 		return
 	}
 
@@ -187,23 +232,27 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	adminID, exists := c.Get("user_id")
+	adminIDVal, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-
-	err = h.adminService.DeleteUser(adminID.(uuid.UUID), userID)
+	adminID, err := uuid.Parse(adminIDVal.(string))
 	if err != nil {
-		if err.Error() == "user not found" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-			return
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid admin user ID"})
+		return
+	}
+
+	err = h.adminService.DeleteUser(adminID, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case errors.Is(err, apperrors.ErrForbidden):
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		default:
+			response.InternalError(c, err)
 		}
-		if err.Error() == "cannot delete an admin user" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete an admin user"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -231,15 +280,25 @@ func (h *Handler) MakeUserAdmin(c *gin.Context) {
 		return
 	}
 
-	adminID, exists := c.Get("user_id")
+	adminIDVal, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-
-	err = h.adminService.MakeUserAdmin(adminID.(uuid.UUID), userID)
+	adminID, err := uuid.Parse(adminIDVal.(string))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid admin user ID"})
+		return
+	}
+
+	err = h.adminService.MakeUserAdmin(adminID, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		default:
+			response.InternalError(c, err)
+		}
 		return
 	}
 
@@ -267,19 +326,24 @@ func (h *Handler) RemoveUserAdmin(c *gin.Context) {
 		return
 	}
 
-	adminID, exists := c.Get("user_id")
+	adminIDVal, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-
-	err = h.adminService.RemoveUserAdmin(adminID.(uuid.UUID), userID)
+	adminID, err := uuid.Parse(adminIDVal.(string))
 	if err != nil {
-		if err.Error() == "cannot remove admin privileges from yourself" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot remove admin privileges from yourself"})
-			return
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid admin user ID"})
+		return
+	}
+
+	err = h.adminService.RemoveUserAdmin(adminID, userID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		} else {
+			response.InternalError(c, err)
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -305,13 +369,39 @@ func (h *Handler) RemoveUserAdmin(c *gin.Context) {
 // @Failure 500 {object} gin.H
 // @Router /api/v1/admin/swaps [get]
 func (h *Handler) GetAllSwaps(c *gin.Context) {
+	sortBy := c.Query("sort_by")
+	if sortBy != "" {
+		switch sortBy {
+		case "created_at", "updated_at":
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sort_by field. Allowed: created_at, updated_at"})
+			return
+		}
+	}
+
+	sortOrder := c.Query("sort_order")
+	if sortOrder != "" {
+		switch sortOrder {
+		case "asc", "desc":
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sort_order. Allowed: asc, desc"})
+			return
+		}
+	}
+
 	filter := service.AdminSwapFilter{
-		SortBy:    c.Query("sort_by"),
-		SortOrder: c.Query("sort_order"),
+		SortBy:    sortBy,
+		SortOrder: sortOrder,
 	}
 
 	if status := c.Query("status"); status != "" {
-		filter.Status = &status
+		switch status {
+		case "pending", "accepted", "rejected", "cancelled":
+			filter.Status = &status
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid status. Allowed: pending, accepted, rejected, cancelled"})
+			return
+		}
 	}
 
 	if requesterID := c.Query("requester_id"); requesterID != "" {
@@ -328,19 +418,27 @@ func (h *Handler) GetAllSwaps(c *gin.Context) {
 
 	if limit := c.Query("limit"); limit != "" {
 		if val, err := strconv.Atoi(limit); err == nil {
+			if val < 0 {
+				val = 0
+			} else if val > 100 {
+				val = 100
+			}
 			filter.Limit = val
 		}
 	}
 
 	if offset := c.Query("offset"); offset != "" {
 		if val, err := strconv.Atoi(offset); err == nil {
+			if val < 0 {
+				val = 0
+			}
 			filter.Offset = val
 		}
 	}
 
 	swaps, total, err := h.adminService.GetAllSwaps(filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -382,15 +480,27 @@ func (h *Handler) CancelSwap(c *gin.Context) {
 		return
 	}
 
-	adminID, exists := c.Get("user_id")
+	adminIDVal, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-
-	err = h.adminService.CancelSwap(adminID.(uuid.UUID), swapID, req.Reason)
+	adminID, err := uuid.Parse(adminIDVal.(string))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid admin user ID"})
+		return
+	}
+
+	err = h.adminService.CancelSwap(adminID, swapID, req.Reason)
+	if err != nil {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case errors.Is(err, apperrors.ErrWrongStatus):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		default:
+			response.InternalError(c, err)
+		}
 		return
 	}
 
@@ -411,7 +521,7 @@ func (h *Handler) CancelSwap(c *gin.Context) {
 func (h *Handler) GetPlatformStats(c *gin.Context) {
 	stats, err := h.adminService.GetPlatformStats()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 
@@ -432,7 +542,7 @@ func (h *Handler) GetPlatformStats(c *gin.Context) {
 func (h *Handler) GetReportedContent(c *gin.Context) {
 	reports, err := h.adminService.GetReportedContent()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.InternalError(c, err)
 		return
 	}
 

@@ -1,10 +1,13 @@
 package file
 
 import (
+	"errors"
 	"net/http"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
+	resp "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/response"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -57,15 +60,16 @@ func (h *Handler) UploadUserPhoto(c *gin.Context) {
 	// Upload file
 	response, err := h.fileUploadService.UploadUserPhoto(uid, file)
 	if err != nil {
-		if err.Error() == "file too large" {
+		switch {
+		case errors.Is(err, apperrors.ErrFileTooLarge):
 			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": err.Error()})
-			return
-		}
-		if err.Error() == "invalid file type" || err.Error() == "invalid file extension" {
+		case errors.Is(err, apperrors.ErrInvalidFileType):
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
-			return
+		case errors.Is(err, apperrors.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		default:
+			resp.InternalError(c, err)
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload file"})
 		return
 	}
 
@@ -97,11 +101,12 @@ func (h *Handler) DeleteUserPhoto(c *gin.Context) {
 	}
 
 	if err := h.fileUploadService.DeleteUserPhoto(uid); err != nil {
-		if err.Error() == "user not found" || err.Error() == "user has no photo to delete" {
+		switch {
+		case errors.Is(err, apperrors.ErrNotFound), errors.Is(err, apperrors.ErrNoPhoto):
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
+		default:
+			resp.InternalError(c, err)
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete photo"})
 		return
 	}
 
@@ -133,11 +138,11 @@ func (h *Handler) GetUserPhoto(c *gin.Context) {
 	// Get photo data from database
 	photoData, mimeType, err := h.fileUploadService.GetUserPhoto(userID)
 	if err != nil {
-		if err.Error() == "user not found" || err.Error() == "user has no photo" {
+		if errors.Is(err, apperrors.ErrNotFound) || errors.Is(err, apperrors.ErrNoPhoto) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Photo not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get photo"})
+		resp.InternalError(c, err)
 		return
 	}
 
@@ -149,9 +154,9 @@ func (h *Handler) GetUserPhoto(c *gin.Context) {
 	c.Data(http.StatusOK, mimeType, photoData)
 }
 
-// GetUserPhotoInfo gets information about a user's profile photo
+// GetUserPhotoInfo gets information about a user's own profile photo
 // @Summary Get user photo info
-// @Description Get information about a user's profile photo
+// @Description Get information about the authenticated user's profile photo. Only the photo owner can access this.
 // @Tags files
 // @Produce json
 // @Param user_id path string true "User ID"
@@ -163,7 +168,18 @@ func (h *Handler) GetUserPhoto(c *gin.Context) {
 // @Failure 500 {object} map[string]string
 // @Router /api/files/users/{user_id}/info [get]
 func (h *Handler) GetUserPhotoInfo(c *gin.Context) {
+	// Only the photo owner can access their photo info
+	authUserID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
 	userIDStr := c.Param("user_id")
+	if userIDStr != authUserID.(string) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
@@ -173,11 +189,11 @@ func (h *Handler) GetUserPhotoInfo(c *gin.Context) {
 
 	fileInfo, err := h.fileUploadService.GetFileInfo(userID)
 	if err != nil {
-		if err.Error() == "user not found" || err.Error() == "user has no photo" {
+		if errors.Is(err, apperrors.ErrNotFound) || errors.Is(err, apperrors.ErrNoPhoto) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Photo not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get photo info"})
+		resp.InternalError(c, err)
 		return
 	}
 

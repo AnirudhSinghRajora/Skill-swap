@@ -1,9 +1,12 @@
 package auth
 
 import (
+	"errors"
 	"net/http"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	appservice "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
+	resp "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/response"
 	"github.com/gin-gonic/gin"
 )
 
@@ -38,11 +41,14 @@ func (h *Handler) Register(c *gin.Context) {
 
 	response, err := h.authService.Register(&req)
 	if err != nil {
-		statusCode := http.StatusInternalServerError
-		if err.Error() == "user with this email already exists" {
-			statusCode = http.StatusConflict
+		switch {
+		case errors.Is(err, apperrors.ErrEmailTaken):
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		case errors.Is(err, apperrors.ErrValidation):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		default:
+			resp.InternalError(c, err)
 		}
-		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -70,11 +76,11 @@ func (h *Handler) Login(c *gin.Context) {
 
 	response, err := h.authService.Login(&req)
 	if err != nil {
-		statusCode := http.StatusInternalServerError
-		if err.Error() == "invalid email or password" {
-			statusCode = http.StatusUnauthorized
+		if errors.Is(err, apperrors.ErrInvalidCredentials) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		} else {
+			resp.InternalError(c, err)
 		}
-		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -102,11 +108,11 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 
 	response, err := h.authService.RefreshToken(req.RefreshToken)
 	if err != nil {
-		statusCode := http.StatusInternalServerError
-		if err.Error() == "invalid refresh token" || err.Error() == "invalid token type" {
-			statusCode = http.StatusUnauthorized
+		if errors.Is(err, apperrors.ErrInvalidToken) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		} else {
+			resp.InternalError(c, err)
 		}
-		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
