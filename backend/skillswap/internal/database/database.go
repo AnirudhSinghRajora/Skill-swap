@@ -120,7 +120,6 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     location TEXT,
-    photo_url TEXT,
     is_public BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -370,9 +369,6 @@ func runAdditionalMigrations(db *gorm.DB) error {
 			ALTER TABLE users 
 			ADD COLUMN IF NOT EXISTS photo_data BYTEA,
 			ADD COLUMN IF NOT EXISTS photo_mime_type VARCHAR(100);
-
-			-- Create index for photo queries
-			CREATE INDEX IF NOT EXISTS idx_users_has_photo ON users(photo_url) WHERE photo_url IS NOT NULL;
 		`
 
 		if err := db.Exec(sql).Error; err != nil {
@@ -382,6 +378,182 @@ func runAdditionalMigrations(db *gorm.DB) error {
 		log.Println("✓ Added photo storage fields to users table")
 	} else {
 		log.Println("✓ Photo storage fields already exist")
+	}
+
+	// Check if conversations table exists (Migration 006)
+	var hasConversationsTable bool
+	err = db.Raw("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='conversations')").Scan(&hasConversationsTable).Error
+	if err != nil {
+		return err
+	}
+
+	if !hasConversationsTable {
+		log.Println("Creating chat tables...")
+
+		sql := `
+			-- Conversations table (one per accepted swap)
+			CREATE TABLE IF NOT EXISTS conversations (
+				conversation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				swap_id UUID NOT NULL UNIQUE,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				last_message_at TIMESTAMP WITH TIME ZONE,
+				deleted_at TIMESTAMP WITH TIME ZONE,
+				CONSTRAINT fk_conversations_swap_id
+					FOREIGN KEY (swap_id) REFERENCES swap_requests(swap_id)
+					ON UPDATE CASCADE ON DELETE CASCADE
+			);
+			CREATE INDEX IF NOT EXISTS idx_conversations_swap_id ON conversations(swap_id);
+			CREATE INDEX IF NOT EXISTS idx_conversations_deleted_at ON conversations(deleted_at);
+
+			-- Messages table
+			CREATE TABLE IF NOT EXISTS messages (
+				message_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				conversation_id UUID NOT NULL,
+				sender_id UUID NOT NULL,
+				content TEXT NOT NULL,
+				has_images BOOLEAN DEFAULT FALSE,
+				is_edited BOOLEAN DEFAULT FALSE,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP WITH TIME ZONE,
+				deleted_at TIMESTAMP WITH TIME ZONE,
+				CONSTRAINT fk_messages_conversation_id
+					FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+					ON UPDATE CASCADE ON DELETE CASCADE,
+				CONSTRAINT fk_messages_sender_id
+					FOREIGN KEY (sender_id) REFERENCES users(user_id)
+					ON UPDATE CASCADE ON DELETE CASCADE
+			);
+			CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+			CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id);
+			CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(conversation_id, created_at DESC);
+			CREATE INDEX IF NOT EXISTS idx_messages_deleted_at ON messages(deleted_at);
+
+			-- Message read status
+			CREATE TABLE IF NOT EXISTS message_read_status (
+				user_id UUID NOT NULL,
+				conversation_id UUID NOT NULL,
+				last_read_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (user_id, conversation_id),
+				CONSTRAINT fk_message_read_status_user_id
+					FOREIGN KEY (user_id) REFERENCES users(user_id)
+					ON UPDATE CASCADE ON DELETE CASCADE,
+				CONSTRAINT fk_message_read_status_conversation_id
+					FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+					ON UPDATE CASCADE ON DELETE CASCADE
+			);
+
+			-- Chat images table
+			CREATE TABLE IF NOT EXISTS chat_images (
+				image_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				message_id UUID,
+				uploader_id UUID NOT NULL,
+				image_data BYTEA NOT NULL,
+				mime_type VARCHAR(50) NOT NULL,
+				file_size INTEGER NOT NULL,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				CONSTRAINT fk_chat_images_message_id
+					FOREIGN KEY (message_id) REFERENCES messages(message_id)
+					ON UPDATE CASCADE ON DELETE SET NULL,
+				CONSTRAINT fk_chat_images_uploader_id
+					FOREIGN KEY (uploader_id) REFERENCES users(user_id)
+					ON UPDATE CASCADE ON DELETE CASCADE
+			);
+			CREATE INDEX IF NOT EXISTS idx_chat_images_message_id ON chat_images(message_id);
+			CREATE INDEX IF NOT EXISTS idx_chat_images_uploader_id ON chat_images(uploader_id);
+
+			-- Add updated_at trigger for messages
+			DROP TRIGGER IF EXISTS update_messages_updated_at ON messages;
+			CREATE TRIGGER update_messages_updated_at
+				BEFORE UPDATE ON messages
+				FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+		`
+
+		if err := db.Exec(sql).Error; err != nil {
+			return err
+		}
+
+		log.Println("✓ Created chat tables")
+	} else {
+		log.Println("✓ Chat tables already exist")
+	}
+
+	// Check if swap completion columns exist (Migration 007)
+	var hasRequesterCompleted bool
+	err = db.Raw("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='swap_requests' AND column_name='requester_completed')").Scan(&hasRequesterCompleted).Error
+	if err != nil {
+		return err
+	}
+
+	if !hasRequesterCompleted {
+		log.Println("Adding swap completion fields...")
+
+		sql := `
+			ALTER TABLE swap_requests
+				ADD COLUMN IF NOT EXISTS requester_completed BOOLEAN DEFAULT FALSE,
+				ADD COLUMN IF NOT EXISTS responder_completed BOOLEAN DEFAULT FALSE;
+		`
+
+		if err := db.Exec(sql).Error; err != nil {
+			return err
+		}
+
+		// Add 'completed' to swap_status enum
+		if err := db.Exec("DO $$ BEGIN ALTER TYPE swap_status ADD VALUE IF NOT EXISTS 'completed'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;").Error; err != nil {
+			log.Printf("Info: swap_status 'completed' value might already exist: %v", err)
+		}
+
+		log.Println("✓ Added swap completion fields")
+	} else {
+		log.Println("✓ Swap completion fields already exist")
+	}
+
+	// Check if E2EE key fields exist (Migration 008)
+	var hasPublicKey bool
+	err = db.Raw("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='public_key')").Scan(&hasPublicKey).Error
+	if err != nil {
+		return err
+	}
+
+	if !hasPublicKey {
+		log.Println("Adding E2EE key fields to users table...")
+
+		sql := `
+			ALTER TABLE users
+			ADD COLUMN IF NOT EXISTS public_key TEXT,
+			ADD COLUMN IF NOT EXISTS encrypted_key_backup TEXT;
+
+			CREATE INDEX IF NOT EXISTS idx_users_has_public_key
+				ON users (user_id) WHERE public_key IS NOT NULL;
+		`
+
+		if err := db.Exec(sql).Error; err != nil {
+			return err
+		}
+
+		log.Println("✓ Added E2EE key fields to users table")
+	} else {
+		log.Println("✓ E2EE key fields already exist")
+	}
+
+	// Check if encrypted column exists on messages table (Migration 009)
+	var hasEncrypted bool
+	err = db.Raw("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='messages' AND column_name='encrypted')").Scan(&hasEncrypted).Error
+	if err != nil {
+		return err
+	}
+
+	if !hasEncrypted {
+		log.Println("Adding encrypted field to messages table...")
+
+		sql := `ALTER TABLE messages ADD COLUMN IF NOT EXISTS encrypted BOOLEAN NOT NULL DEFAULT false;`
+
+		if err := db.Exec(sql).Error; err != nil {
+			return err
+		}
+
+		log.Println("✓ Added encrypted field to messages table")
+	} else {
+		log.Println("✓ Messages encrypted field already exists")
 	}
 
 	return nil
@@ -398,6 +570,10 @@ func hasAllTables(db *gorm.DB) bool {
 		&models.SwapRequest{},
 		&models.SwapRating{},
 		&models.Notification{},
+		&models.Conversation{},
+		&models.Message{},
+		&models.MessageReadStatus{},
+		&models.ChatImage{},
 	}
 
 	for _, table := range tables {
@@ -444,7 +620,9 @@ func seedDefaultSkills(db *gorm.DB) error {
 	}
 
 	var existingSkills []models.Skill
-	db.Find(&existingSkills)
+	if err := db.Find(&existingSkills).Error; err != nil {
+		return err
+	}
 
 	existingSkillsMap := make(map[string]bool)
 	for _, skill := range existingSkills {
