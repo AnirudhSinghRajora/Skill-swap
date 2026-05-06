@@ -1,9 +1,11 @@
 package service
 
 import (
-	"errors"
+	"fmt"
 	"time"
+	"unicode"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/repository"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/config"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
@@ -37,7 +39,6 @@ type RegisterRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8"`
 	Location string `json:"location,omitempty"`
-	PhotoURL string `json:"photo_url,omitempty"`
 }
 
 type LoginRequest struct {
@@ -54,12 +55,14 @@ type AuthResponse struct {
 }
 
 type UserInfo struct {
-	UserID   uuid.UUID `json:"user_id"`
-	Name     string    `json:"name"`
-	Email    string    `json:"email"`
-	Location *string   `json:"location"`
-	PhotoURL *string   `json:"photo_url"`
-	IsPublic bool      `json:"is_public"`
+	UserID       uuid.UUID `json:"user_id"`
+	Name         string    `json:"name"`
+	Email        string    `json:"email"`
+	Location     *string   `json:"location"`
+	HasPhoto     bool      `json:"has_photo"`
+	IsPublic     bool      `json:"is_public"`
+	PublicKey    *string   `json:"public_key,omitempty"`
+	HasKeyBackup bool      `json:"has_key_backup"`
 }
 
 type TokenClaims struct {
@@ -72,16 +75,21 @@ type TokenClaims struct {
 
 // Register creates a new user account
 func (s *authService) Register(req *RegisterRequest) (*AuthResponse, error) {
+	// Validate password strength
+	if err := validatePassword(req.Password); err != nil {
+		return nil, err
+	}
+
 	// Check if user already exists
 	existingUser, _ := s.userRepo.GetByEmail(req.Email)
 	if existingUser != nil {
-		return nil, errors.New("user with this email already exists")
+		return nil, fmt.Errorf("user with this email already exists: %w", apperrors.ErrEmailTaken)
 	}
 
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, errors.New("failed to hash password")
+		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
 	// Create user
@@ -95,12 +103,9 @@ func (s *authService) Register(req *RegisterRequest) (*AuthResponse, error) {
 	if req.Location != "" {
 		user.Location = &req.Location
 	}
-	if req.PhotoURL != "" {
-		user.PhotoURL = &req.PhotoURL
-	}
 
 	if err := s.userRepo.Create(user); err != nil {
-		return nil, errors.New("failed to create user")
+		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
 	// Generate tokens
@@ -112,12 +117,12 @@ func (s *authService) Login(req *LoginRequest) (*AuthResponse, error) {
 	// Get user by email
 	user, err := s.userRepo.GetByEmail(req.Email)
 	if err != nil {
-		return nil, errors.New("invalid email or password")
+		return nil, fmt.Errorf("invalid email or password: %w", apperrors.ErrInvalidCredentials)
 	}
 
 	// Verify password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		return nil, errors.New("invalid email or password")
+		return nil, fmt.Errorf("invalid email or password: %w", apperrors.ErrInvalidCredentials)
 	}
 
 	// Generate tokens
@@ -129,17 +134,17 @@ func (s *authService) RefreshToken(refreshToken string) (*AuthResponse, error) {
 	// Parse and validate refresh token
 	claims, err := s.ValidateToken(refreshToken)
 	if err != nil {
-		return nil, errors.New("invalid refresh token")
+		return nil, fmt.Errorf("invalid refresh token: %w", apperrors.ErrInvalidToken)
 	}
 
 	if claims.TokenType != "refresh" {
-		return nil, errors.New("invalid token type")
+		return nil, fmt.Errorf("invalid token type: %w", apperrors.ErrInvalidToken)
 	}
 
 	// Get user to generate new tokens
 	user, err := s.userRepo.GetByID(claims.UserID)
 	if err != nil {
-		return nil, errors.New("user not found")
+		return nil, fmt.Errorf("user not found: %w", apperrors.ErrNotFound)
 	}
 
 	return s.generateAuthResponse(user)
@@ -149,7 +154,7 @@ func (s *authService) RefreshToken(refreshToken string) (*AuthResponse, error) {
 func (s *authService) ValidateToken(tokenString string) (*TokenClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &TokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.New("unexpected signing method")
+			return nil, fmt.Errorf("unexpected signing method: %w", apperrors.ErrInvalidToken)
 		}
 		return []byte(s.cfg.JWTSecret), nil
 	})
@@ -162,7 +167,7 @@ func (s *authService) ValidateToken(tokenString string) (*TokenClaims, error) {
 		return claims, nil
 	}
 
-	return nil, errors.New("invalid token")
+	return nil, fmt.Errorf("invalid token: %w", apperrors.ErrInvalidToken)
 }
 
 // Helper function to generate auth response with tokens
@@ -186,7 +191,7 @@ func (s *authService) generateAuthResponse(user *models.User) (*AuthResponse, er
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
 	accessTokenString, err := accessToken.SignedString([]byte(s.cfg.JWTSecret))
 	if err != nil {
-		return nil, errors.New("failed to generate access token")
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
 	// Generate refresh token
@@ -205,7 +210,7 @@ func (s *authService) generateAuthResponse(user *models.User) (*AuthResponse, er
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
 	refreshTokenString, err := refreshToken.SignedString([]byte(s.cfg.JWTSecret))
 	if err != nil {
-		return nil, errors.New("failed to generate refresh token")
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
 	return &AuthResponse{
@@ -214,12 +219,42 @@ func (s *authService) generateAuthResponse(user *models.User) (*AuthResponse, er
 		TokenType:    "Bearer",
 		ExpiresIn:    int64(time.Until(accessTokenExp).Seconds()),
 		User: UserInfo{
-			UserID:   user.UserID,
-			Name:     user.Name,
-			Email:    user.Email,
-			Location: user.Location,
-			PhotoURL: user.PhotoURL,
-			IsPublic: user.IsPublic,
+			UserID:       user.UserID,
+			Name:         user.Name,
+			Email:        user.Email,
+			Location:     user.Location,
+			HasPhoto:     len(user.PhotoData) > 0,
+			IsPublic:     user.IsPublic,
+			PublicKey:    user.PublicKey,
+			HasKeyBackup: user.EncryptedKeyBackup != nil && *user.EncryptedKeyBackup != "",
 		},
 	}, nil
+}
+
+// validatePassword checks password meets minimum strength requirements
+func validatePassword(password string) error {
+	if len(password) < 8 {
+		return fmt.Errorf("password must be at least 8 characters: %w", apperrors.ErrValidation)
+	}
+	var hasLetter, hasDigit, hasSpecial bool
+	for _, ch := range password {
+		switch {
+		case unicode.IsLetter(ch):
+			hasLetter = true
+		case unicode.IsDigit(ch):
+			hasDigit = true
+		default:
+			hasSpecial = true
+		}
+	}
+	if !hasLetter {
+		return fmt.Errorf("password must contain at least one letter: %w", apperrors.ErrValidation)
+	}
+	if !hasDigit {
+		return fmt.Errorf("password must contain at least one number: %w", apperrors.ErrValidation)
+	}
+	if !hasSpecial {
+		return fmt.Errorf("password must contain at least one special character: %w", apperrors.ErrValidation)
+	}
+	return nil
 }
