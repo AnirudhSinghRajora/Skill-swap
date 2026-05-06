@@ -2,7 +2,10 @@ package service
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -50,7 +53,7 @@ func (s *skillService) GetSkillByID(skillID uuid.UUID) (*models.Skill, error) {
 	err := s.db.First(&skill, "skill_id = ?", skillID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("skill not found")
+			return nil, fmt.Errorf("skill not found: %w", apperrors.ErrNotFound)
 		}
 		return nil, err
 	}
@@ -59,8 +62,13 @@ func (s *skillService) GetSkillByID(skillID uuid.UUID) (*models.Skill, error) {
 
 // CreateSkill creates a new skill
 func (s *skillService) CreateSkill(name string) (*models.Skill, error) {
+	trimmed := strings.TrimSpace(name)
+	if len(trimmed) < 2 || len(trimmed) > 100 {
+		return nil, fmt.Errorf("skill name must be 2-100 characters: %w", apperrors.ErrValidation)
+	}
+
 	skill := &models.Skill{
-		Name: name,
+		Name: trimmed,
 	}
 
 	err := s.db.Create(skill).Error
@@ -95,16 +103,22 @@ func (s *skillService) DeleteSkill(skillID uuid.UUID) error {
 		return err
 	}
 
-	// Check if skill is referenced in user skills or swap requests
-	var offeredCount, wantedCount int64
-	s.db.Model(&models.UserSkillOffered{}).Where("skill_id = ?", skillID).Count(&offeredCount)
-	s.db.Model(&models.UserSkillWanted{}).Where("skill_id = ?", skillID).Count(&wantedCount)
+	// Use transaction to ensure count checks and delete are atomic
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var offeredCount, wantedCount int64
+		if err := tx.Model(&models.UserSkillOffered{}).Where("skill_id = ?", skillID).Count(&offeredCount).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.UserSkillWanted{}).Where("skill_id = ?", skillID).Count(&wantedCount).Error; err != nil {
+			return err
+		}
 
-	if offeredCount > 0 || wantedCount > 0 {
-		return errors.New("skill is in use and cannot be deleted")
-	}
+		if offeredCount > 0 || wantedCount > 0 {
+			return fmt.Errorf("skill is in use and cannot be deleted: %w", apperrors.ErrInUse)
+		}
 
-	return s.db.Delete(&models.Skill{}, "skill_id = ?", skillID).Error
+		return tx.Delete(&models.Skill{}, "skill_id = ?", skillID).Error
+	})
 }
 
 // AddOfferedSkill adds a skill to user's offered skills
@@ -117,9 +131,11 @@ func (s *skillService) AddOfferedSkill(userID, skillID uuid.UUID) error {
 
 	// Check if already exists
 	var count int64
-	s.db.Model(&models.UserSkillOffered{}).Where("user_id = ? AND skill_id = ?", userID, skillID).Count(&count)
+	if err := s.db.Model(&models.UserSkillOffered{}).Where("user_id = ? AND skill_id = ?", userID, skillID).Count(&count).Error; err != nil {
+		return err
+	}
 	if count > 0 {
-		return errors.New("skill already in offered skills")
+		return fmt.Errorf("skill already in offered skills: %w", apperrors.ErrConflict)
 	}
 
 	userSkill := &models.UserSkillOffered{
@@ -133,10 +149,13 @@ func (s *skillService) AddOfferedSkill(userID, skillID uuid.UUID) error {
 // RemoveOfferedSkill removes a skill from user's offered skills
 func (s *skillService) RemoveOfferedSkill(userID, skillID uuid.UUID) error {
 	result := s.db.Delete(&models.UserSkillOffered{}, "user_id = ? AND skill_id = ?", userID, skillID)
-	if result.RowsAffected == 0 {
-		return errors.New("offered skill not found")
+	if result.Error != nil {
+		return result.Error
 	}
-	return result.Error
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("offered skill not found: %w", apperrors.ErrNotFound)
+	}
+	return nil
 }
 
 // AddWantedSkill adds a skill to user's wanted skills
@@ -149,9 +168,11 @@ func (s *skillService) AddWantedSkill(userID, skillID uuid.UUID) error {
 
 	// Check if already exists
 	var count int64
-	s.db.Model(&models.UserSkillWanted{}).Where("user_id = ? AND skill_id = ?", userID, skillID).Count(&count)
+	if err := s.db.Model(&models.UserSkillWanted{}).Where("user_id = ? AND skill_id = ?", userID, skillID).Count(&count).Error; err != nil {
+		return err
+	}
 	if count > 0 {
-		return errors.New("skill already in wanted skills")
+		return fmt.Errorf("skill already in wanted skills: %w", apperrors.ErrConflict)
 	}
 
 	userSkill := &models.UserSkillWanted{
@@ -165,10 +186,13 @@ func (s *skillService) AddWantedSkill(userID, skillID uuid.UUID) error {
 // RemoveWantedSkill removes a skill from user's wanted skills
 func (s *skillService) RemoveWantedSkill(userID, skillID uuid.UUID) error {
 	result := s.db.Delete(&models.UserSkillWanted{}, "user_id = ? AND skill_id = ?", userID, skillID)
-	if result.RowsAffected == 0 {
-		return errors.New("wanted skill not found")
+	if result.Error != nil {
+		return result.Error
 	}
-	return result.Error
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("wanted skill not found: %w", apperrors.ErrNotFound)
+	}
+	return nil
 }
 
 // GetUserOfferedSkills retrieves all skills offered by a user

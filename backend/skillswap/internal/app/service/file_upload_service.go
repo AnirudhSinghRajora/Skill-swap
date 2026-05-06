@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/config"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -17,10 +17,9 @@ type FileUploadService struct {
 	db           *gorm.DB
 	maxFileSize  int64
 	allowedTypes map[string]bool
-	baseURL      string
 }
 
-func NewFileUploadService(db *gorm.DB, cfg config.Config) *FileUploadService {
+func NewFileUploadService(db *gorm.DB) *FileUploadService {
 	// Set allowed image types
 	allowedTypes := map[string]bool{
 		"image/jpeg": true,
@@ -34,7 +33,6 @@ func NewFileUploadService(db *gorm.DB, cfg config.Config) *FileUploadService {
 		db:           db,
 		maxFileSize:  5 * 1024 * 1024, // 5MB default
 		allowedTypes: allowedTypes,
-		baseURL:      cfg.BaseURL,
 	}
 }
 
@@ -60,16 +58,12 @@ func (s *FileUploadService) UploadUserPhoto(userID uuid.UUID, file *multipart.Fi
 	// Get MIME type
 	mimeType := file.Header.Get("Content-Type")
 
-	// Generate photo URL (for API endpoint to serve the image)
-	photoURL := s.generatePhotoURL(userID)
-
 	// Update user's photo in database
 	result := s.db.Model(&models.User{}).
 		Where("user_id = ?", userID).
 		Updates(map[string]interface{}{
 			"photo_data":      photoData,
 			"photo_mime_type": mimeType,
-			"photo_url":       photoURL,
 		})
 
 	if result.Error != nil {
@@ -77,12 +71,12 @@ func (s *FileUploadService) UploadUserPhoto(userID uuid.UUID, file *multipart.Fi
 	}
 
 	if result.RowsAffected == 0 {
-		return nil, fmt.Errorf("user not found")
+		return nil, fmt.Errorf("user not found: %w", apperrors.ErrNotFound)
 	}
 
 	return &models.FileUploadResponse{
 		Filename: file.Filename,
-		URL:      photoURL,
+		URL:      fmt.Sprintf("/api/v1/files/users/%s/photo", userID.String()),
 		Size:     file.Size,
 		MimeType: mimeType,
 	}, nil
@@ -94,14 +88,14 @@ func (s *FileUploadService) DeleteUserPhoto(userID uuid.UUID) error {
 	var user models.User
 	if err := s.db.Select("photo_data").First(&user, "user_id = ?", userID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("user not found")
+			return fmt.Errorf("user not found: %w", apperrors.ErrNotFound)
 		}
 		return fmt.Errorf("failed to get user: %w", err)
 	}
 
 	// Check if user has photo
 	if len(user.PhotoData) == 0 {
-		return fmt.Errorf("user has no photo to delete")
+		return fmt.Errorf("user has no photo to delete: %w", apperrors.ErrNoPhoto)
 	}
 
 	// Clear photo data in database
@@ -110,7 +104,6 @@ func (s *FileUploadService) DeleteUserPhoto(userID uuid.UUID) error {
 		Updates(map[string]interface{}{
 			"photo_data":      nil,
 			"photo_mime_type": nil,
-			"photo_url":       nil,
 		})
 
 	if result.Error != nil {
@@ -125,13 +118,13 @@ func (s *FileUploadService) GetUserPhoto(userID uuid.UUID) ([]byte, string, erro
 	var user models.User
 	if err := s.db.Select("photo_data, photo_mime_type").First(&user, "user_id = ?", userID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, "", fmt.Errorf("user not found")
+			return nil, "", fmt.Errorf("user not found: %w", apperrors.ErrNotFound)
 		}
 		return nil, "", fmt.Errorf("failed to get user photo: %w", err)
 	}
 
 	if len(user.PhotoData) == 0 {
-		return nil, "", fmt.Errorf("user has no photo")
+		return nil, "", fmt.Errorf("user has no photo: %w", apperrors.ErrNoPhoto)
 	}
 
 	mimeType := "image/jpeg" // default
@@ -145,27 +138,22 @@ func (s *FileUploadService) GetUserPhoto(userID uuid.UUID) ([]byte, string, erro
 // GetFileInfo returns information about a user's photo
 func (s *FileUploadService) GetFileInfo(userID uuid.UUID) (*models.FileInfo, error) {
 	var user models.User
-	if err := s.db.Select("photo_data, photo_mime_type, photo_url, updated_at").First(&user, "user_id = ?", userID).Error; err != nil {
+	if err := s.db.Select("photo_data, photo_mime_type, updated_at").First(&user, "user_id = ?", userID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("user not found")
+			return nil, fmt.Errorf("user not found: %w", apperrors.ErrNotFound)
 		}
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
 	if len(user.PhotoData) == 0 {
-		return nil, fmt.Errorf("user has no photo")
-	}
-
-	url := ""
-	if user.PhotoURL != nil {
-		url = *user.PhotoURL
+		return nil, fmt.Errorf("user has no photo: %w", apperrors.ErrNoPhoto)
 	}
 
 	return &models.FileInfo{
 		Filename: "profile_photo",
 		Size:     int64(len(user.PhotoData)),
 		ModTime:  user.UpdatedAt,
-		URL:      url,
+		URL:      fmt.Sprintf("/api/v1/files/users/%s/photo", userID.String()),
 	}, nil
 }
 
@@ -173,13 +161,13 @@ func (s *FileUploadService) GetFileInfo(userID uuid.UUID) (*models.FileInfo, err
 func (s *FileUploadService) validateFile(file *multipart.FileHeader) error {
 	// Check file size
 	if file.Size > s.maxFileSize {
-		return fmt.Errorf("file too large: %d bytes (max: %d bytes)", file.Size, s.maxFileSize)
+		return fmt.Errorf("file too large: %d bytes (max: %d bytes): %w", file.Size, s.maxFileSize, apperrors.ErrFileTooLarge)
 	}
 
 	// Check file type
 	contentType := file.Header.Get("Content-Type")
 	if !s.allowedTypes[contentType] {
-		return fmt.Errorf("invalid file type: %s", contentType)
+		return fmt.Errorf("invalid file type: %s: %w", contentType, apperrors.ErrInvalidFileType)
 	}
 
 	// Check file extension
@@ -193,13 +181,8 @@ func (s *FileUploadService) validateFile(file *multipart.FileHeader) error {
 	}
 
 	if !validExts[ext] {
-		return fmt.Errorf("invalid file extension: %s", ext)
+		return fmt.Errorf("invalid file extension: %s: %w", ext, apperrors.ErrInvalidFileType)
 	}
 
 	return nil
-}
-
-// generatePhotoURL generates the URL to access user's photo
-func (s *FileUploadService) generatePhotoURL(userID uuid.UUID) string {
-	return fmt.Sprintf("%s/api/v1/files/users/%s/photo", s.baseURL, userID.String())
 }
