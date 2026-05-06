@@ -1,19 +1,23 @@
 import { SkillType } from './skill';
 
-export type UserRoleType = 'user' | 'admin';
-
 export interface UserType {
-	userId: string;
+	user_id: string;
 	name: string;
 	email: string;
-	role: UserRoleType;
-	rating: number | null;
 	location: string | null;
-	photoUrl: string | null;
-	isPublic: boolean;
-	createdAt: string;
-	updatedAt: string;
-	deletedAt: string | null;
-	skillsOffered: SkillType[];
-	skillsWanted: SkillType[];
+	has_photo: boolean;
+	is_public: boolean;
+	public_key?: string;
+	has_key_backup?: boolean;
+	skills_offered: SkillType[];
+	skills_wanted: SkillType[];
+	created_at: string;
+}
+
+export interface SearchUsersResponse {
+	users: UserType[];
+	total: number;
+	page: number;
+	limit: number;
+	total_pages: number;
 }
