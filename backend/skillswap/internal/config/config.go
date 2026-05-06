@@ -34,8 +34,7 @@ func Load() Config {
 	}
 
 	if jwtSecret == "" {
-		jwtSecret = "default-secret-change-in-production"
-		log.Println("Warning: Using default JWT secret. Set JWT_SECRET environment variable in production.")
+		log.Fatal("FATAL: JWT_SECRET environment variable is required. Cannot start without a secure secret.")
 	}
 
 	if uploadDir == "" {
