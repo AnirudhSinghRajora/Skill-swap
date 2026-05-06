@@ -14,6 +14,7 @@ func SetupAuthRoutes(api *gin.RouterGroup, authService service.AuthService, cfg 
 
 	// Public auth routes (no authentication required)
 	authGroup := api.Group("/auth")
+	authGroup.Use(middleware.AuthRateLimit())
 	{
 		authGroup.POST("/register", authHandler.Register)
 		authGroup.POST("/login", authHandler.Login)

@@ -28,7 +28,7 @@ func SetupRatingRoutes(api *gin.RouterGroup, cfg *config.Config, ratingHandler *
 	// User-specific rating routes
 	usersGroup := api.Group("/users")
 	{
-		usersGroup.GET("/:user_id/ratings", ratingHandler.GetUserRatings)
-		usersGroup.GET("/:user_id/ratings/stats", ratingHandler.GetUserRatingStats)
+		usersGroup.GET("/:id/ratings", ratingHandler.GetUserRatings)
+		usersGroup.GET("/:id/ratings/stats", ratingHandler.GetUserRatingStats)
 	}
 }

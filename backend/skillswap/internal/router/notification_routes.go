@@ -23,6 +23,10 @@ func SetupNotificationRoutes(api *gin.RouterGroup, notificationService *service.
 		notifications.DELETE("/:id", notificationHandler.DeleteNotification)         // DELETE /api/notifications/:id
 
 		// Admin only routes
-		notifications.POST("", notificationHandler.CreateNotification) // POST /api/notifications (admin only)
+		adminNotifications := notifications.Group("")
+		adminNotifications.Use(middleware.AdminAuth())
+		{
+			adminNotifications.POST("", notificationHandler.CreateNotification) // POST /api/notifications (admin only)
+		}
 	}
 }

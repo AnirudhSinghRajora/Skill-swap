@@ -5,6 +5,7 @@ import (
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/repository"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/app/service"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/availability"
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/chat"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/config"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/rating"
 	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/skill"
@@ -22,13 +23,15 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, *cfg)
 	skillService := service.NewSkillService(db)
-	swapService := service.NewSwapService(db)
+	notificationService := service.NewNotificationService(db)
+	swapService := service.NewSwapService(db, notificationService)
 	ratingService := service.NewRatingService(db)
 	adminService := service.NewAdminService(db)
 	availabilityService := service.NewAvailabilityService(db)
-	notificationService := service.NewNotificationService(db)
 	searchService := service.NewSearchService(db)
-	fileUploadService := service.NewFileUploadService(db, *cfg)
+	fileUploadService := service.NewFileUploadService(db)
+	chatRepo := repository.NewChatRepository(db)
+	chatService := service.NewChatService(chatRepo, db, notificationService)
 
 	// Initialize handlers
 	skillHandler := skill.NewHandler(skillService)
@@ -36,6 +39,12 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	ratingHandler := rating.NewHandler(ratingService)
 	adminHandler := admin.NewHandler(adminService)
 	availabilityHandler := availability.NewHandler(availabilityService)
+	chatHandler := chat.NewHandler(chatService)
+
+	// WebSocket hub — singleton for the lifetime of the application.
+	hub := chat.NewHub()
+	go hub.Run()
+	wsHandler := chat.NewWSHandler(hub, chatService, chatRepo, cfg)
 
 	// Setup route groups
 	SetupAuthRoutes(api, authService, cfg)
@@ -48,4 +57,9 @@ func SetupRoutes(api *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	SetupNotificationRoutes(api, notificationService, cfg)
 	SetupSearchRoutes(api, searchService, cfg)
 	SetupFileRoutes(api, fileUploadService, cfg)
+	SetupChatRoutes(api, cfg, chatHandler)
+
+	// WebSocket endpoint — auth is handled inside the upgrade handler
+	// (token passed via query param), so no JWT middleware here.
+	api.GET("/ws", wsHandler.HandleWebSocket)
 }

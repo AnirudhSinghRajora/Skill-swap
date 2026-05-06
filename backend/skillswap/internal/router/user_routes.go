@@ -16,6 +16,7 @@ func SetupUserRoutes(api *gin.RouterGroup, userService service.UserService, cfg 
 	public := api.Group("/public")
 	{
 		public.GET("/users/search", userHandler.SearchUsers)
+		public.GET("/users/:id", userHandler.GetPublicProfile)
 	}
 
 	// Protected user routes (authentication required)
@@ -24,5 +25,10 @@ func SetupUserRoutes(api *gin.RouterGroup, userService service.UserService, cfg 
 	{
 		protected.GET("/profile", userHandler.GetProfile)
 		protected.PUT("/profile", userHandler.UpdateProfile)
+
+		// E2EE key management
+		protected.PUT("/me/e2ee-keys", userHandler.SetE2EEKeys)
+		protected.GET("/me/key-backup", userHandler.GetKeyBackup)
+		protected.GET("/:id/public-key", userHandler.GetUserPublicKey)
 	}
 }
