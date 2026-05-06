@@ -13,13 +13,14 @@ type User struct {
 	Email         string    `gorm:"uniqueIndex;not null"`
 	PasswordHash  string    `gorm:"column:password_hash;not null"`
 	Location      *string
-	PhotoURL      *string        `gorm:"column:photo_url"`
 	PhotoData     []byte         `gorm:"column:photo_data;type:bytea"`
 	PhotoMimeType *string        `gorm:"column:photo_mime_type"`
-	IsPublic      bool           `gorm:"column:is_public;default:true"`
-	IsAdmin       bool           `gorm:"column:is_admin;default:false"`
-	IsBanned      bool           `gorm:"column:is_banned;default:false"`
-	CreatedAt     time.Time      `gorm:"column:created_at;autoCreateTime"`
+	IsPublic           bool           `gorm:"column:is_public;default:true"`
+	IsAdmin            bool           `gorm:"column:is_admin;default:false"`
+	IsBanned           bool           `gorm:"column:is_banned;default:false"`
+	PublicKey          *string        `gorm:"column:public_key"`
+	EncryptedKeyBackup *string        `gorm:"column:encrypted_key_backup"`
+	CreatedAt          time.Time      `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt     time.Time      `gorm:"column:updated_at;autoUpdateTime"`
 	DeletedAt     gorm.DeletedAt `gorm:"column:deleted_at;index"`
 
