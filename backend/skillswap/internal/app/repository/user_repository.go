@@ -2,8 +2,10 @@ package repository
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/apperrors"
 	models "github.com/Sky-walkerX/Skill-swap/backend/skillswap/internal/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -16,6 +18,11 @@ type UserRepository interface {
 	Update(user *models.User) error
 	Delete(id uuid.UUID) error
 	List(limit, offset int, filters UserFilters) ([]*models.User, int64, error)
+
+	// E2EE key management
+	UpdateE2EEKeys(userID uuid.UUID, publicKey, encryptedBackup string) error
+	GetPublicKey(userID uuid.UUID) (string, error)
+	GetKeyBackup(userID uuid.UUID) (string, error)
 }
 
 type UserFilters struct {
@@ -48,7 +55,7 @@ func (r *userRepository) GetByID(id uuid.UUID) (*models.User, error) {
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("user not found")
+			return nil, fmt.Errorf("user %w", apperrors.ErrNotFound)
 		}
 		return nil, err
 	}
@@ -60,7 +67,7 @@ func (r *userRepository) GetByEmail(email string) (*models.User, error) {
 	err := r.db.Where("email = ?", email).First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("user not found")
+			return nil, fmt.Errorf("user %w", apperrors.ErrNotFound)
 		}
 		return nil, err
 	}
@@ -74,6 +81,57 @@ func (r *userRepository) Update(user *models.User) error {
 
 func (r *userRepository) Delete(id uuid.UUID) error {
 	return r.db.Where("user_id = ?", id).Delete(&models.User{}).Error
+}
+
+func (r *userRepository) UpdateE2EEKeys(userID uuid.UUID, publicKey, encryptedBackup string) error {
+	result := r.db.Model(&models.User{}).
+		Where("user_id = ?", userID).
+		Updates(map[string]interface{}{
+			"public_key":           publicKey,
+			"encrypted_key_backup": encryptedBackup,
+			"updated_at":           time.Now(),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("user %w", apperrors.ErrNotFound)
+	}
+	return nil
+}
+
+func (r *userRepository) GetPublicKey(userID uuid.UUID) (string, error) {
+	var user models.User
+	err := r.db.Select("public_key").
+		Where("user_id = ?", userID).
+		First(&user).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", fmt.Errorf("user %w", apperrors.ErrNotFound)
+		}
+		return "", err
+	}
+	if user.PublicKey == nil || *user.PublicKey == "" {
+		return "", fmt.Errorf("public key not set: %w", apperrors.ErrNotFound)
+	}
+	return *user.PublicKey, nil
+}
+
+func (r *userRepository) GetKeyBackup(userID uuid.UUID) (string, error) {
+	var user models.User
+	err := r.db.Select("encrypted_key_backup").
+		Where("user_id = ?", userID).
+		First(&user).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", fmt.Errorf("user %w", apperrors.ErrNotFound)
+		}
+		return "", err
+	}
+	if user.EncryptedKeyBackup == nil || *user.EncryptedKeyBackup == "" {
+		return "", fmt.Errorf("key backup not set: %w", apperrors.ErrNotFound)
+	}
+	return *user.EncryptedKeyBackup, nil
 }
 
 func (r *userRepository) List(limit, offset int, filters UserFilters) ([]*models.User, int64, error) {
