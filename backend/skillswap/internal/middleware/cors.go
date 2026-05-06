@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -18,8 +19,12 @@ type CORSConfig struct {
 
 // DefaultCORSConfig returns default CORS configuration
 func DefaultCORSConfig() CORSConfig {
+	allowedOrigins := []string{"http://localhost:3000"}
+	if origin := os.Getenv("FRONTEND_URL"); origin != "" {
+		allowedOrigins = []string{origin}
+	}
 	return CORSConfig{
-		AllowOrigins: []string{"*"},
+		AllowOrigins: allowedOrigins,
 		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
 		AllowHeaders: []string{
 			"Origin",

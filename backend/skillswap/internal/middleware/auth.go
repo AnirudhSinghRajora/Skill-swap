@@ -90,7 +90,8 @@ func JWTAuth(cfg config.Config, authConfig ...AuthConfig) gin.HandlerFunc {
 func AdminAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		isAdmin, exists := c.Get("is_admin")
-		if !exists || !isAdmin.(bool) {
+		isAdminBool, ok := isAdmin.(bool)
+		if !exists || !ok || !isAdminBool {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			c.Abort()
 			return

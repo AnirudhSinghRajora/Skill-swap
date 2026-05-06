@@ -21,9 +21,8 @@ func DefaultSecurityConfig() SecurityConfig {
 		FrameOptions:       "DENY",
 		XSSProtection:      "1; mode=block",
 		ReferrerPolicy:     "strict-origin-when-cross-origin",
-		// CSP and HSTS can be customized based on needs
-		ContentSecurityPolicy:   "",
-		StrictTransportSecurity: "",
+		ContentSecurityPolicy:   "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline';",
+		StrictTransportSecurity: "max-age=31536000; includeSubDomains",
 	}
 }
 
